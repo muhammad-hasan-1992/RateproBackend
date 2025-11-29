@@ -18,12 +18,17 @@
 // routes/tenant.js
 const express = require('express');
 const router = express.Router();
-const { updateTenant } = require('../controllers/tenantController');
+const { updateTenant, getMyTenant, updateMyPlan } = require('../controllers/tenantController');
 const { getTenant } = require('../controllers/tenantController');
 const { protect } = require('../middlewares/authMiddleware'); // Middleware to set req.user
 
+
+router.get('/me', protect, getMyTenant);
+router.patch('/me/plan', protect, updateMyPlan);
+
 router.put('/:tenantId', protect, updateTenant);
 router.get('/:id', protect, getTenant);
-// router.get('/members/:tenantId', protect, getTenantMembers);
+
+
 
 module.exports = router;

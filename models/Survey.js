@@ -1,6 +1,5 @@
 // models/Survey.js
 const mongoose = require("mongoose");
-
 const questionSchema = new mongoose.Schema({
   id: { type: String },
   questionText: { type: String, required: true },
@@ -58,7 +57,7 @@ const surveySchema = new mongoose.Schema(
       password: { type: String },
     },
     status: { type: String, enum: ["active", "inactive", "draft", "scheduled"], default: "draft" }, // ← "scheduled" add kiya!
-    
+
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
     totalResponses: { type: Number, default: 0 },
     averageScore: { type: Number, default: 0 },
@@ -91,6 +90,13 @@ const surveySchema = new mongoose.Schema(
       method: { type: String, enum: ["manual", "auto", "cron"] },
       recipientsCount: { type: Number, default: 0 }
     }],
+
+    sections: [{
+      id: String,
+      title: String,
+      questions: [questionSchema]
+    }],
+    logicRules: [{ type: mongoose.Schema.Types.ObjectId, ref: 'LogicRule' }],
 
     thankYouPage: {
       message: { type: String, default: "Thank you for your feedback!" },

@@ -223,3 +223,47 @@ exports.getTenant = async (req, res) => {
     res.status(500).json({ message: 'Server error' });
   }
 };
+
+exports.getMyTenant = async (req, res) => {
+  try {
+    const tenant = await Tenant.findById(req.user.tenant)
+      .populate('plan', 'name description features limits');
+
+    if (!tenant) {
+      return res.status(404).json({ message: "Tenant not found" });
+    }
+
+    res.json({
+      success: true,
+      tenant: {
+        _id: tenant._id,
+        name: tenant.name,
+        plan: tenant.plan,
+        features: tenant.features || {},
+        limits: tenant.limits || {},
+        usage: tenant.usage || {}
+      }
+    });
+  } catch (err) {
+    console.error("getMyTenant error:", err);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
+exports.updateMyPlan = async (req, res) => {
+  const { planId } = req.body;
+  const plan = await Plan.findById(planId);
+  if (!plan) return res.status(404).json({ message: "Plan not found" });
+
+  const updated = await Tenant.findByIdAndUpdate(
+    req.user.tenant,
+    {
+      plan: planId,
+      features: plan.features,
+      limits: plan.limits
+    },
+    { new: true }
+  ).populate('plan');
+
+  res.json({ success: true, tenant: updated });
+};

@@ -7,7 +7,7 @@ const {
   getCategories,
   updateCategory,
   deleteCategory,
-} = require('../controllers/userCategoryController');
+} = require('../controllers/contactCategoryController');
 
 const { protect } = require('../middlewares/authMiddleware');
 const { allowRoles } = require('../middlewares/roleMiddleware');

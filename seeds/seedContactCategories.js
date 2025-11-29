@@ -1,5 +1,5 @@
 // seedUserCategories.js
-const UserCategory = require("../models/UserCategory");
+const UserCategory = require("../models/ContactCategory");
 const User = require("../models/User");
 const defaultUserCategories = require("./defaultUserCategories");
 

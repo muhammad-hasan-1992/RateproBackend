@@ -16,7 +16,6 @@
 
 //   module.exports = getBaseURL;
 // utils/getBaseURL.js
-
 const getBaseURL = () => {
   const isProduction = process.env.NODE_ENV === "production";
 

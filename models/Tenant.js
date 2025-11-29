@@ -91,6 +91,40 @@ const tenantSchema = new mongoose.Schema({
       ref: "Department",
     }
   ],
+  plan: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Plan',
+    default: null
+  },
+
+  features: {
+    type: Object,
+    default: {
+      aiSurveyGeneration: true,
+      whatsappDistribution: false,
+      smsDistribution: true,
+      advancedAnalytics: true,
+      customBranding: false,
+      apiAccess: false,
+      smartSegments: false,
+      actionEngine: false,
+      deliveryIntelligence: false,
+      globalAiBrain: false,
+      whiteLabel: false,
+      prioritySupport: false,
+    }
+  },
+
+  limits: {
+    monthlyResponses: { type: Number, default: 500 },
+    teamMembers: { type: Number, default: 3 },
+    storageGB: { type: Number, default: 1 },
+  },
+
+  usage: {
+    responsesThisMonth: { type: Number, default: 0 },
+    surveysThisMonth: { type: Number, default: 0 },
+  },
   products: [{ type: String }],
   contacts: [{ phone: String, name: String, role: String }],
 }, { timestamps: true });

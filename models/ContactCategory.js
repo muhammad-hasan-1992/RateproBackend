@@ -1,6 +1,6 @@
 const mongoose = require('mongoose');
 
-const userCategorySchema = new mongoose.Schema({
+const ContactCategorySchema = new mongoose.Schema({
   name: {
     type: String,
     required: [true, "Category name is required"],
@@ -35,14 +35,14 @@ const userCategorySchema = new mongoose.Schema({
 }, { timestamps: true });
 
 // Optional: ensure name is unique per tenant
-userCategorySchema.index({ tenant: 1, name: 1 }, { unique: true });
+ContactCategorySchema.index({ tenant: 1, name: 1 }, { unique: true });
 
 // Example pre-validation
-userCategorySchema.pre('save', function (next) {
+ContactCategorySchema.pre('save', function (next) {
   if (!this.tenant) {
     return next(new Error("UserCategory must belong to a Tenant"));
   }
   next();
 });
 
-module.exports = mongoose.model("UserCategory", userCategorySchema);
+module.exports = mongoose.model("UserCategory", ContactCategorySchema);

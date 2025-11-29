@@ -1,5 +1,5 @@
-// // controllers/userCategoryController.js
-// const UserCategory = require('../models/UserCategory');
+// // controllers/ContactCategoryController.js
+// const ContactCategory = require('../models/ContactCategory');
 // const Joi = require('joi');
 
 // // Joi Validation Schemas
@@ -28,13 +28,13 @@
 //         if (!['admin', 'companyAdmin'].includes(req.user.role))
 //             return res.status(403).json({ message: 'Access denied' });
 
-//         const exists = await UserCategory.findOne({
+//         const exists = await ContactCategory.findOne({
 //             tenant: req.tenantId,
 //             name: value.name,
 //         });
 //         if (exists) return res.status(400).json({ message: 'Category already exists in this company' });
 
-//         const category = await UserCategory.create({
+//         const category = await ContactCategory.create({
 //             ...value,
 //             tenant: req.tenantId,
 //             createdBy: req.user._id,
@@ -57,7 +57,7 @@
 //             active: true,
 //         };
 
-//         const categories = await UserCategory.find(filter)
+//         const categories = await ContactCategory.find(filter)
 //             .select("name type active isDefault createdAt")
 //             .sort({ isDefault: -1, name: 1 }); // show defaults first
 
@@ -77,13 +77,13 @@
 //             return res.status(403).json({ message: "Access denied" });
 
 //         // 🔒 Prevent editing default categories
-//         const target = await UserCategory.findById(req.params.id);
+//         const target = await ContactCategory.findById(req.params.id);
 //         if (!target) return res.status(404).json({ message: "Category not found" });
 //         if (target.isDefault)
 //             return res.status(400).json({ message: "Default categories cannot be modified" });
 
 //         // ✅ Update allowed only on tenant’s own categories
-//         const category = await UserCategory.findOneAndUpdate(
+//         const category = await ContactCategory.findOneAndUpdate(
 //             { _id: req.params.id, tenant: req.tenantId },
 //             { $set: value },
 //             { new: true, runValidators: true }
@@ -101,12 +101,12 @@
 //         if (!["admin", "companyAdmin"].includes(req.user.role))
 //             return res.status(403).json({ message: "Access denied" });
 
-//         const target = await UserCategory.findById(req.params.id);
+//         const target = await ContactCategory.findById(req.params.id);
 //         if (!target) return res.status(404).json({ message: "Category not found" });
 //         if (target.isDefault)
 //             return res.status(400).json({ message: "Default categories cannot be deleted" });
 
-//         const category = await UserCategory.findOneAndUpdate(
+//         const category = await ContactCategory.findOneAndUpdate(
 //             { _id: req.params.id, tenant: req.tenantId },
 //             { $set: { active: false } },
 //             { new: true }
@@ -117,8 +117,8 @@
 //         res.status(500).json({ message: 'Server error', error: err.message });
 //     }
 // };
-// controllers/userCategoryController.js
-const UserCategory = require('../models/UserCategory');
+// controllers/ContactCategoryController.js
+const ContactCategory = require('../models/ContactCategory');
 const Joi = require('joi');
 const Logger = require("../utils/auditLog");
 
@@ -155,7 +155,7 @@ exports.createCategory = async (req, res) => {
             return res.status(403).json({ message: 'Access denied' });
         }
 
-        const exists = await UserCategory.findOne({
+        const exists = await ContactCategory.findOne({
             tenant: req.tenantId,
             name: value.name,
         });
@@ -164,7 +164,7 @@ exports.createCategory = async (req, res) => {
             return res.status(400).json({ message: 'Category already exists in this company' });
         }
 
-        const category = await UserCategory.create({
+        const category = await ContactCategory.create({
             ...value,
             tenant: req.tenantId,
             createdBy: req.user._id,
@@ -190,7 +190,7 @@ exports.getCategories = async (req, res) => {
             active: true,
         };
 
-        const categories = await UserCategory.find(filter)
+        const categories = await ContactCategory.find(filter)
             .select("name type active isDefault createdAt")
             .sort({ isDefault: -1, name: 1 }); // show defaults first
 
@@ -218,7 +218,7 @@ exports.updateCategory = async (req, res) => {
         }
 
         // 🔒 Prevent editing default categories
-        const target = await UserCategory.findById(req.params.id);
+        const target = await ContactCategory.findById(req.params.id);
         if (!target) {
             await Logger.warn('updateCategory: Category not found', { categoryId: req.params.id });
             return res.status(404).json({ message: "Category not found" });
@@ -229,7 +229,7 @@ exports.updateCategory = async (req, res) => {
         }
 
         // ✅ Update allowed only on tenant’s own categories
-        const category = await UserCategory.findOneAndUpdate(
+        const category = await ContactCategory.findOneAndUpdate(
             { _id: req.params.id, tenant: req.tenantId },
             { $set: value },
             { new: true, runValidators: true }
@@ -252,7 +252,7 @@ exports.deleteCategory = async (req, res) => {
             return res.status(403).json({ message: "Access denied" });
         }
 
-        const target = await UserCategory.findById(req.params.id);
+        const target = await ContactCategory.findById(req.params.id);
         if (!target) {
             await Logger.warn('deleteCategory: Category not found', { categoryId: req.params.id });
             return res.status(404).json({ message: "Category not found" });
@@ -262,7 +262,7 @@ exports.deleteCategory = async (req, res) => {
             return res.status(400).json({ message: "Default categories cannot be deleted" });
         }
 
-        const category = await UserCategory.findOneAndUpdate(
+        const category = await ContactCategory.findOneAndUpdate(
             { _id: req.params.id, tenant: req.tenantId },
             { $set: { active: false } },
             { new: true }

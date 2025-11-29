@@ -1,12 +1,14 @@
 // controllers/contactManagementController.js
 const Contact = require("../models/ContactManagement");
-const AudienceSegment = require("../models/AudienceSegmentation");
+// const AudienceSegment = require("../../removed files backup/AudienceSegmentation");
 const ExcelJS = require('exceljs');
 const PDFDocument = require("pdfkit");
 const path = require('path');
 const fs = require("fs");
 const XLSX = require('xlsx');
 const Logger = require("../utils/auditLog");
+const { default: mongoose } = require("mongoose");
+
 
 // GET /api/contacts
 exports.getContacts = async (req, res) => {
@@ -86,53 +88,89 @@ exports.getContactById = async (req, res) => {
 // Bulk create contacts from Excel
 exports.bulkCreateContacts = async (req, res) => {
     try {
+        console.log("🔵 BULK IMPORT STARTED");
+
         const currentUser = req.user;
-        
+        console.log("👤 Current User:", currentUser?.email, "Role:", currentUser?.role);
+
         // Role check
         if (currentUser.role !== 'companyAdmin') {
+            console.log("❌ Permission denied - not companyAdmin");
             return res.status(403).json({ message: 'Access denied: Only CompanyAdmin can perform bulk upload' });
         }
 
         // File check
         if (!req.file) {
+            console.log("❌ No file received in request");
             return res.status(400).json({ message: 'No Excel file uploaded' });
         }
+
+        console.log("📄 File received:", req.file.originalname, "Size:", req.file.size);
 
         // Read Excel
         const workbook = XLSX.read(req.file.buffer, { type: 'buffer' });
         const sheetName = workbook.SheetNames[0];
+        console.log("📄 Excel sheet name:", sheetName);
 
         const worksheet = workbook.Sheets[sheetName];
         const rows = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false });
 
+        console.log("📊 Total rows including header:", rows.length);
+
         if (rows.length < 2) {
+            console.log("❌ No data rows found in Excel");
             return res.status(400).json({ message: 'Empty or invalid Excel file. Must have at least one data row.' });
         }
 
         const dataRows = rows.slice(1);
         const tenantId = currentUser.tenant._id ? currentUser.tenant._id.toString() : currentUser.tenant;
 
+        console.log("🏢 Tenant ID:", tenantId);
+        console.log("📊 Data rows to process:", dataRows.length);
+
         const successes = [];
         const errors = [];
 
         for (let i = 0; i < dataRows.length; i++) {
             const row = dataRows[i];
-            const [name, email, phone, company, segmentName, tags, statusStr] = row.map(
+            console.log(`\n🟡 Processing row ${i + 1}:`, row);
+
+            const [name, email, phone, company, segmentName, tags, statusStr, contactCategoriesStr] = row.map(
                 val => val?.toString().trim() || ''
             );
 
             if (!name || !email) {
+                console.log("⚠️ Missing required fields:", { name, email });
                 errors.push({ row: row.join(','), message: 'Name and Email are required' });
                 continue;
             }
 
+            // Contact Categories processing
+            // Contact Category: only ONE category allowed
+            let contactCategory = null;
+
+            if (contactCategoriesStr) {
+                const categoryName = contactCategoriesStr.trim().toLowerCase();
+
+                const matchedCategory = await Contact.findOne({
+                    tenantId,
+                    name: { $regex: new RegExp(`^${categoryName}$`, 'i') } // case-insensitive
+                });
+
+                if (matchedCategory) {
+                    contactCategory = matchedCategory._id;
+                } else {
+                    console.log(`⚠️ No matching contact category found for: ${contactCategoriesStr}`);
+                }
+            }
+
             // Segment check / create
             let segmentDoc = null;
-
             if (segmentName) {
                 segmentDoc = await AudienceSegment.findOne({ tenantId, name: segmentName });
                 if (!segmentDoc) {
                     console.log(`⚠️ Segment "${segmentName}" not found for email ${email}. Contact created without segment.`);
+                    // errors.push({ email, message: `Segment "${segmentName}" does not exist` }); // optional
                 } else {
                     segmentDoc.size += 1;
                     await segmentDoc.save();
@@ -142,11 +180,14 @@ exports.bulkCreateContacts = async (req, res) => {
             // Check duplicate email
             const existingContact = await Contact.findOne({ email, tenantId });
             if (existingContact) {
+                console.log("⚠️ Email already exists:", email);
                 errors.push({ email, message: 'Contact already exists with this email' });
                 continue;
             }
 
             // Create contact
+            console.log("🟢 Creating new contact:", email);
+
             const newContact = await Contact.create({
                 tenantId,
                 name,
@@ -156,11 +197,17 @@ exports.bulkCreateContacts = async (req, res) => {
                 segment: segmentDoc ? segmentDoc._id : null,
                 tags,
                 status: statusStr || 'Active',
+                contactCategoryId: contactCategory,
                 lastActivity: new Date(),
             });
 
             successes.push({ id: newContact._id, email: newContact.email });
         }
+
+        console.log("\n✅ BULK IMPORT FINISHED");
+        console.log("➡️ Total:", dataRows.length);
+        console.log("➡️ Success:", successes.length);
+        console.log("➡️ Errors:", errors.length);
 
         // Logging
         await Logger.info({
@@ -196,7 +243,8 @@ exports.bulkCreateContacts = async (req, res) => {
 // POST /api/contacts
 exports.createContact = async (req, res) => {
     try {
-        const { name, email, phone, company, segment, tags, status } = req.body;
+        console.log("🔹 Request body:", req.body);
+        const { name, email, phone, company, segment, tags, status, contactCategories } = req.body;
 
         let segmentId = null;
         if (segment) {
@@ -220,24 +268,31 @@ exports.createContact = async (req, res) => {
             console.log("ℹ️ No segment provided, proceeding without segment");
         }
 
+        const contactCategoriesIds = contactCategories?.map(id => new mongoose.Types.ObjectId(id));
+
         // Create contact with tenantId
+        console.log("🔹 Creating new contact...");
         const newContact = await Contact.create({
             tenantId: req.tenantId,      // IMPORTANT
             name,
             email,
             phone,
             company,
+            contactCategories: contactCategoriesIds || [],
             segment: segmentDoc ? segmentDoc._id : null,
             tags,
             status: status || "Active",
             lastActivity: new Date(),
         });
 
+        console.log("✅ Contact created:", newContact._id);
+
         const contactWithSegment = await Contact.findOne({
             _id: newContact._id,
             tenantId: req.tenantId
         }).populate("segment", "name");
 
+        console.log("🔹 Returning contact with populated segment");
         res.status(201).json(contactWithSegment);
 
     } catch (err) {
@@ -249,7 +304,9 @@ exports.createContact = async (req, res) => {
 // PUT /api/contacts/:id
 exports.updateContact = async (req, res) => {
     try {
-        const { name, email, phone, company, segment, tags, status } = req.body;
+        const { name, email, phone, company, contactCategories, segment, tags, status } = req.body;
+
+        console.log("🔥 Incoming segment raw:", segment); // ← ye add karo
 
         let contact = await Contact.findOne({
             _id: req.params.id,
@@ -275,6 +332,9 @@ exports.updateContact = async (req, res) => {
                 newSegmentId = segment.id.toString();
             }
         }
+
+        console.log("Old Segment ID:", oldSegmentId);
+        console.log("New Segment ID:", newSegmentId);
 
         // Agar segment change hua hai
         if (oldSegmentId !== newSegmentId) {
@@ -310,12 +370,16 @@ exports.updateContact = async (req, res) => {
                 contact.segment = null;
             }
         }
+        console.log("Segment updated to:", contact.segment);
 
         // Baaki fields
         if (name !== undefined) contact.name = name;
         if (email !== undefined) contact.email = email;
         if (phone !== undefined) contact.phone = phone;
         if (company !== undefined) contact.company = company;
+        if (contactCategories !== undefined) {
+            contact.contactCategories = contactCategories.map(id => new mongoose.Types.ObjectId(id));
+        }
         if (tags !== undefined) contact.tags = tags;
         if (status !== undefined) contact.status = status;
 

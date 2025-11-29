@@ -1,6 +1,4 @@
 // middlewares/roleMiddleware.js
-
-
 exports.allowRoles = (...roles) => (req, res, next) => {
 
   if (req.user.role === "member") {

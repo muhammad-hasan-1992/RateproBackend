@@ -25,23 +25,23 @@ router.use(setTenantId);
 // Action CRUD routes
 router.route("/")
   .get(getActions)
-  .post(allowRoles(["companyAdmin", "admin"]), createAction);
+  .post(allowRoles("companyAdmin", "admin"), createAction);
 
 router.route("/:id")
   .get(getActionById)
-  .put(allowRoles(["companyAdmin", "admin", "member"]), updateAction)
-  .delete(allowRoles(["companyAdmin", "admin"]), deleteAction);
+  .put(allowRoles("companyAdmin", "admin", "member"), updateAction)
+  .delete(allowRoles("companyAdmin", "admin"), deleteAction);
 
 // Specialized action routes
-router.put("/:id/assign", allowRoles(["companyAdmin", "admin"]), assignAction);
+router.put("/:id/assign", allowRoles("companyAdmin", "admin"), assignAction);
 router.get("/priority/:priority", getActionsByPriority);
 router.get("/status/:status", getActionsByStatus);
-router.get("/analytics/summary", allowRoles(["companyAdmin", "admin"]), getActionsAnalytics);
+router.get("/analytics/summary", allowRoles("companyAdmin", "admin"), getActionsAnalytics);
 
 // Bulk operations
-router.put("/bulk/update", allowRoles(["companyAdmin", "admin"]), bulkUpdateActions);
+router.put("/bulk/update", allowRoles("companyAdmin", "admin"), bulkUpdateActions);
 
 // AI-powered action generation from feedback
-router.post("/generate/feedback", allowRoles(["companyAdmin", "admin"]), generateActionsFromFeedback);
+router.post("/generate/feedback", allowRoles("companyAdmin", "admin"), generateActionsFromFeedback);
 
 module.exports = router;

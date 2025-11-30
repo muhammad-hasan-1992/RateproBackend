@@ -111,7 +111,6 @@ const cookieParser = require("cookie-parser");
 const cors = require("cors");
 const path = require("path");
 const cron = require("node-cron");
-console.log("MONGO_URI =>", process.env.MONGO_URI);
 // Middlewares
 const { globalLimiter } = require("./middlewares/rateLimiter");
 const { notFound, errorHandler } = require("./middlewares/errorHandler");
@@ -161,6 +160,12 @@ app.use(
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   })
 );
+// app.use(
+//   cors({
+//     origin: allowedOrigins,
+//     credentials: true,
+//   })
+// );
 
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));

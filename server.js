@@ -139,8 +139,8 @@ const app = express();
 // Core Middleware
 // ----------------------
 // app.set("trust proxy", 1);
-app.set("trust proxy", true);
-
+// app.set("trust proxy", true);
+app.enable("trust proxy");
 
 const allowedOrigins = [
   "http://localhost:5173",
@@ -153,24 +153,24 @@ const allowedOrigins = [
   "https://rateprobackend-production-c52f.up.railway.app",
 ];
 
-app.use(
-  cors({
-    origin: (origin, callback) => {
-      if (!origin || allowedOrigins.includes(origin)) {
-        return callback(null, true);
-      }
-      return callback(new Error("Not allowed by CORS"));
-    },
-    credentials: true,
-    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-  })
-);
 // app.use(
 //   cors({
-//     origin: allowedOrigins,
+//     origin: (origin, callback) => {
+//       if (!origin || allowedOrigins.includes(origin)) {
+//         return callback(null, true);
+//       }
+//       return callback(new Error("Not allowed by CORS"));
+//     },
 //     credentials: true,
+//     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
 //   })
 // );
+app.use(
+  cors({
+    origin: allowedOrigins,
+    credentials: true,
+  })
+);
 
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));

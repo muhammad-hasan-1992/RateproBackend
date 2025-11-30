@@ -601,13 +601,15 @@ exports.loginUser = async (req, res, next) => {
             httpOnly: true,
             secure: process.env.NODE_ENV === "production",
             sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
-            maxAge: 7 * 24 * 60 * 60 * 1000
+            maxAge: 7 * 24 * 60 * 60 * 1000,
+            domain: ".vercel.app",
         });
         res.cookie("accessToken", accessToken, {
             httpOnly: true,
             secure: process.env.NODE_ENV === "production",
             sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
-            maxAge: 30 * 60 * 60 * 1000
+            maxAge: 30 * 60 * 60 * 1000,
+            domain: ".vercel.app",
         });
         console.log("\x1b[32m[DEBUG] loginUser - cookies set (tokens hidden)\x1b[0m");
 

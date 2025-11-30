@@ -150,7 +150,6 @@ const allowedOrigins = [
   // frontend production
   "https://rate-pro-public.vercel.app",
   "https://rate-pro-admin-six.vercel.app",
-  "https://rateprobackend-production-c52f.up.railway.app",
 ];
 
 // app.use(

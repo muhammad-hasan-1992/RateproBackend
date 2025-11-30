@@ -597,40 +597,18 @@ exports.loginUser = async (req, res, next) => {
         const refreshToken = generateToken({ _id: user._id.toString(), role: user.role }, "refresh");
 
         // Set cookies
-        // res.cookie("refreshToken", refreshToken, {
-        //     httpOnly: true,
-        //     secure: process.env.NODE_ENV === "production",
-        //     sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
-        //     maxAge: 7 * 24 * 60 * 60 * 1000,
-        //     domain: ".vercel.app",
-        // });
-        // res.cookie("accessToken", accessToken, {
-        //     httpOnly: true,
-        //     secure: process.env.NODE_ENV === "production",
-        //     sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
-        //     maxAge: 30 * 60 * 60 * 1000,
-        //     domain: ".vercel.app",
-        // });
-        const isProd = process.env.NODE_ENV === "production";
-
-        res.cookie("accessToken", accessToken, {
-            httpOnly: true,
-            secure: isProd,
-            sameSite: isProd ? "none" : "lax",
-            domain: isProd ? ".vercel.app" : "localhost",
-            path: "/",
-            maxAge: 24 * 60 * 60 * 1000,
-        });
-
         res.cookie("refreshToken", refreshToken, {
             httpOnly: true,
-            secure: isProd,
-            sameSite: isProd ? "none" : "lax",
-            domain: isProd ? ".vercel.app" : "localhost",
-            path: "/",
-            maxAge: 7 * 24 * 60 * 60 * 1000,
+            secure: process.env.NODE_ENV === "production",
+            sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+            maxAge: 7 * 24 * 60 * 60 * 1000
         });
-        
+        res.cookie("accessToken", accessToken, {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === "production",
+            sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+            maxAge: 30 * 60 * 60 * 1000
+        });
         console.log("\x1b[32m[DEBUG] loginUser - cookies set (tokens hidden)\x1b[0m");
 
         // Update last login
@@ -660,8 +638,7 @@ exports.loginUser = async (req, res, next) => {
         await Logger.info('loginUser', 'User logged in successfully', { email });
         console.log("\x1b[32m[DEBUG] loginUser - success response about to be sent\x1b[0m", { userId: user._id.toString() });
 
-        res.status(200).json({ user: safeUser });
-        // res.status(200).json({ accessToken, user: safeUser });
+        res.status(200).json({ accessToken, user: safeUser });
     } catch (err) {
         console.error('Login error:', err);
         await Logger.error('loginUser', 'Server error', { message: err.message, stack: err.stack });

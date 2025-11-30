@@ -597,17 +597,38 @@ exports.loginUser = async (req, res, next) => {
         const refreshToken = generateToken({ _id: user._id.toString(), role: user.role }, "refresh");
 
         // Set cookies
-        res.cookie("refreshToken", refreshToken, {
+        // res.cookie("refreshToken", refreshToken, {
+        //     httpOnly: true,
+        //     secure: process.env.NODE_ENV === "production",
+        //     sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+        //     maxAge: 7 * 24 * 60 * 60 * 1000
+        // });
+        // res.cookie("accessToken", accessToken, {
+        //     httpOnly: true,
+        //     secure: process.env.NODE_ENV === "production",
+        //     sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+        //     maxAge: 30 * 60 * 60 * 1000
+        // });
+
+        const isProd = process.env.NODE_ENV === "production";
+
+        const cookieConfig = {
             httpOnly: true,
-            secure: process.env.NODE_ENV === "production",
-            sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
-            maxAge: 7 * 24 * 60 * 60 * 1000
-        });
+            secure: isProd,       // Railway uses HTTPS → must be true in prod
+            sameSite: isProd ? "none" : "lax", // NONE IS MANDATORY FOR CROSS SITE
+            path: "/"
+        };
+
+        if (isProd) cookieConfig.domain = ".vercel.app";
+
         res.cookie("accessToken", accessToken, {
-            httpOnly: true,
-            secure: process.env.NODE_ENV === "production",
-            sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
-            maxAge: 30 * 60 * 60 * 1000
+            ...cookieConfig,
+            maxAge: 24 * 60 * 60 * 1000,
+        });
+
+        res.cookie("refreshToken", refreshToken, {
+            ...cookieConfig,
+            maxAge: 7 * 24 * 60 * 60 * 1000,
         });
         console.log("\x1b[32m[DEBUG] loginUser - cookies set (tokens hidden)\x1b[0m");
 

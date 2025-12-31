@@ -1,6 +1,6 @@
 // controllers/responses/submittedInvitedResponse.controller.js
 const { submitResponseSchema } = require("../../validators/surveyResponseValidator");
-const { handleInvitedResponse } = require("../../services/responses/invitedResponseService");
+const { submitResponseService } = require("../../services/responses/submitResponseService");
 
 exports.submitInvitedResponse = async (req, res, next) => {
   try {
@@ -9,7 +9,7 @@ exports.submitInvitedResponse = async (req, res, next) => {
       return res.status(400).json({ message: error.details[0].message });
     }
 
-    const response = await handleInvitedResponse({
+    const response = await submitResponseService({
       token: req.params.token,
       payload: value,
     });

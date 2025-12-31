@@ -1,5 +1,5 @@
 // services/analytics/analyticsService.js
-const Feedback = require("../../models/Feedback");
+const Feedback = require("../../models/SurveyResponse");
 const { calculateNPS, generateSentimentHeatmap, generateTrendline } = require("../../utils/analyticsUtils");
 
 exports.getAnalyticsService = async (surveyId) => {

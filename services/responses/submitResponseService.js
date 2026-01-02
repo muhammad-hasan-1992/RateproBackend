@@ -3,6 +3,7 @@ const SurveyInvite = require("../../models/SurveyInvite");
 const SurveyResponse = require("../../models/SurveyResponse");
 const { processPostSurveyResponse } = require("../postResponse/postResponseProcessor");
 const { postResponseQueue } = require("../../queues/postResponse.queue");
+const { onSurveyResponse } = require("../contact/contactSurveySync.service");
 const Logger = require("../../utils/auditLog");
 
 exports.submitSurveyResponseService = async ({
@@ -41,6 +42,18 @@ exports.submitSurveyResponseService = async ({
   invite.respondedAt = new Date();
   await invite.save();
 
+  // 4️⃣ 🔥 NEW: Sync to Contact.surveyStats
+  if (invite.contact?.email) {
+    await onSurveyResponse({
+      tenantId: invite.tenant,
+      email: invite.contact.email,
+      npsScore: payload.score,    // NPS score (0-10)
+      rating: payload.rating,      // Rating (1-5)
+      responseDate: new Date(),
+    });
+  }
+
+  // 5️⃣ Post-processing (actions, AI analysis, etc.)
   await postResponseQueue.add("process-response", {
     response,
     survey: invite.survey,
@@ -57,7 +70,8 @@ exports.submitSurveyResponseService = async ({
     context: {
       surveyId: invite.survey._id,
       responseId: response._id,
-      inviteId: invite._id
+      inviteId: invite._id,
+      contactEmail: invite.contact?.email,
     },
     ip
   });

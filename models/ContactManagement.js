@@ -1,91 +1,3 @@
-// // models/ContactManagement.js
-// const mongoose = require("mongoose");
-
-// const ContactSchema = new mongoose.Schema({
-//     name:
-//     {
-//         type: String,
-//         required: true
-//     },
-
-//     email:
-//     {
-//         type: String,
-//         required: true,
-//         unique: true
-//     },
-
-//     phone:
-//     {
-//         type: String
-//     },
-
-//     company:
-//     {
-//         type: String
-//     },
-//     segment:
-//     {
-//         type: mongoose.Schema.Types.ObjectId,
-//         ref: "AudienceSegment"
-//     },
-
-//     contactCategories: [
-//         {
-//             type: mongoose.Schema.Types.ObjectId,
-//             ref: "UserCategory",
-//         }
-//     ],
-
-//     tags:
-//     {
-//         type: String
-//     },
-
-//     autoTags: {
-//         type: [String],
-//         default: [],
-//     },
-
-//     enrichment: {
-//         country: { type: String },
-//         countryCode: { type: String },
-//         city: { type: String },
-//         region: { type: String },
-//         gender: { type: String },
-//         company: { type: String },
-//         domain: { type: String },
-//         inferredAt: { type: Date },
-//         source: { type: String },
-//     },
-
-//     status:
-//     {
-//         type: String,
-//         enum: ["Active", "Inactive", "Blocked"], default: "Active"
-//     },
-
-//     tenantId: {
-//         type: mongoose.Schema.Types.ObjectId,
-//         ref: "Tenant",
-//         required: function () {
-//             return this.role === "companyAdmin" || this.role === "member";
-//         },
-//     },
-//     lastActivity:
-//     {
-//         type: Date,
-//         default: Date.now
-//     },
-
-//     createdAt:
-//     {
-//         type: Date,
-//         default: Date.now
-//     },
-// });
-
-// module.exports = mongoose.model("Contact", ContactSchema);
 // models/Contact.js
 const mongoose = require("mongoose");
 
@@ -114,13 +26,21 @@ const ContactSchema = new mongoose.Schema({
     index: true,
   },
 
-  contactCategories: [
-    {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "UserCategory",
-      index: true,
+  contactCategories: {
+    type: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "ContactCategory",  // 🔥 Changed from "UserCategory"
+      },
+    ],
+    validate: {
+      validator: function (v) {
+        return Array.isArray(v) && v.length > 0;
+      },
+      message: "Contact must belong to at least one category",
     },
-  ],
+    index: true,
+  },
 
   enrichment: {
     country: String,
@@ -151,12 +71,86 @@ const ContactSchema = new mongoose.Schema({
     default: Date.now,
     index: true,
   },
+
+  // ─────────────────────────────────────────────────────────────
+  // 🔥 NEW: Survey & Response Tracking (denormalized for segments)
+  // ─────────────────────────────────────────────────────────────
+
+  surveyStats: {
+    // Total number of survey invitations sent to this contact
+    invitedCount: {
+      type: Number,
+      default: 0,
+      index: true,
+    },
+
+    // Total number of surveys this contact has responded to
+    respondedCount: {
+      type: Number,
+      default: 0,
+      index: true,
+    },
+
+    // Date of most recent survey response
+    lastResponseDate: {
+      type: Date,
+      index: true,
+    },
+
+    // Date of most recent invitation
+    lastInvitedDate: {
+      type: Date,
+      index: true,
+    },
+
+    // Latest NPS score (0-10)
+    latestNpsScore: {
+      type: Number,
+      min: 0,
+      max: 10,
+      index: true,
+    },
+
+    // Average NPS score across all responses
+    avgNpsScore: {
+      type: Number,
+      min: 0,
+      max: 10,
+    },
+
+    // Latest satisfaction rating (1-5)
+    latestRating: {
+      type: Number,
+      min: 1,
+      max: 5,
+    },
+
+    // Average rating across all responses
+    avgRating: {
+      type: Number,
+      min: 1,
+      max: 5,
+    },
+
+    // NPS category: promoter (9-10), passive (7-8), detractor (0-6)
+    npsCategory: {
+      type: String,
+      enum: ["promoter", "passive", "detractor"],
+      index: true,
+    },
+  },
 });
 
-// 🔥 Multi-tenant email uniqueness (CORRECT WAY)
-ContactSchema.index(
-  { tenantId: 1, email: 1 },
-  { unique: true }
-);
+// 🔥 Multi-tenant email uniqueness
+ContactSchema.index({ tenantId: 1, email: 1 }, { unique: true });
+
+// 🔥 Compound indexes for segment queries
+ContactSchema.index({ tenantId: 1, "surveyStats.lastResponseDate": -1 });
+ContactSchema.index({ tenantId: 1, "surveyStats.latestNpsScore": 1 });
+ContactSchema.index({ tenantId: 1, "surveyStats.npsCategory": 1 });
+ContactSchema.index({ tenantId: 1, "surveyStats.invitedCount": 1, "surveyStats.respondedCount": 1 });
+ContactSchema.index({ tenantId: 1, "enrichment.country": 1 });
+ContactSchema.index({ tenantId: 1, "enrichment.city": 1 });
+ContactSchema.index({ tenantId: 1, "enrichment.region": 1 });
 
 module.exports = mongoose.model("Contact", ContactSchema);

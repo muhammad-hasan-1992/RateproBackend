@@ -1,5 +1,5 @@
 // seedUserCategories.js
-const UserCategory = require("../models/ContactCategory");
+const ContactCategory = require("../models/ContactCategory"); // 🔥 Renamed
 const User = require("../models/User");
 const defaultUserCategories = require("./defaultUserCategories");
 
@@ -16,7 +16,7 @@ const seedUserCategories = async () => {
     console.log(`👤 Using admin user: ${adminUser.name}`);
 
     // ✅ Purani categories delete kar do (optional)
-    await UserCategory.deleteMany({});
+    await ContactCategory.deleteMany({});
     console.log("🗑️ Existing user categories cleared.");
 
     // ✅ Tenant ID (agar multi-tenant system hai)
@@ -32,7 +32,7 @@ const seedUserCategories = async () => {
     }));
 
     // ✅ Insert karo
-    const inserted = await UserCategory.insertMany(categoriesWithMeta);
+    const inserted = await ContactCategory.insertMany(categoriesWithMeta);
     console.log(`✅ ${inserted.length} user categories seeded successfully.`);
 
     return inserted;

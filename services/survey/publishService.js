@@ -1,10 +1,10 @@
 // services/survey/publishService.js
 const Survey = require("../../models/Survey");
 const Contact = require("../../models/ContactManagement");
-const Tenant = require("../../models/Tenant"); // ✅ Add Tenant model
+const Tenant = require("../../models/Tenant");
 const { validateSurveyForPublish } = require("../../validators/publishValidator");
 const resolveAudience = require("../distribution/resolveAudienceService");
-const createSurveyInvites = require("../distribution/createSurveyInvitesService");
+const { createBulkSurveyInvites } = require("../distribution/createSurveyInvitesService");  // 🔥 FIX
 const sendSurveyInvites = require("../email/sendSurveyInviteService"); // ✅ Add email service
 
 /**
@@ -167,20 +167,24 @@ module.exports.publish = async ({ surveyId, surveyData, tenantId, userId }) => {
   // ✅ Use stored IDs for new surveys, or extract from embedded contacts for existing drafts
   let contactIdsForResolve = [];
   let segmentIdsForResolve = [];
+  let categoryIdsForResolve = [];  // 🔥 ADD THIS
   
   if (survey._parsedAudienceIds) {
     // New survey - use the parsed IDs we stored
     contactIdsForResolve = survey._parsedAudienceIds.contactIds || [];
     segmentIdsForResolve = survey._parsedAudienceIds.segmentIds || [];
+    categoryIdsForResolve = survey._parsedAudienceIds.categoryIds || [];  // 🔥 ADD THIS
   } else {
     // Existing draft - need to resolve from embedded contacts or stored refs
     // For embedded contacts, we already have the data - no need to query again
     segmentIdsForResolve = audience.segments || [];
+    categoryIdsForResolve = audience.categories || [];  // 🔥 ADD THIS
   }
 
   const recipients = await resolveAudience({
     contactIds: contactIdsForResolve,
     segmentIds: segmentIdsForResolve,
+    categoryIds: categoryIdsForResolve,  // 🔥 ADD THIS
     tenantId: tenantObjectId
   });
 
@@ -204,7 +208,7 @@ module.exports.publish = async ({ surveyId, surveyData, tenantId, userId }) => {
   // Create invites using createSurveyInvitesService
   console.log("📨 [publishService] Creating invites...");
   
-  const invites = await createSurveyInvites({
+  const invites = await createBulkSurveyInvites({  // 🔥 FIX: renamed function
     surveyId: survey._id,
     tenantId: tenantObjectId,
     contacts: finalRecipients

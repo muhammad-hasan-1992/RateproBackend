@@ -5,6 +5,13 @@ const Logger = require("../../utils/auditLog");
 
 /**
  * POST /api/contacts/bulk-upload
+ * 
+ * Body (multipart/form-data):
+ *   - excel: Excel file
+ *   - defaultCategoryId: (optional) fallback category for rows without category column
+ * 
+ * Excel Headers:
+ *   name | email | phone | company | tags | status | category
  */
 exports.bulkUploadContacts = async (req, res) => {
   try {
@@ -24,6 +31,9 @@ exports.bulkUploadContacts = async (req, res) => {
       });
     }
 
+    // 🔥 NEW: Get default category from body (optional)
+    const { defaultCategoryId } = req.body;
+
     // 📘 Read Excel file
     const workbook = XLSX.read(req.file.buffer, { type: "buffer" });
     const sheetName = workbook.SheetNames[0];
@@ -42,7 +52,7 @@ exports.bulkUploadContacts = async (req, res) => {
 
     /**
      * Expected Excel Headers:
-     * name | email | phone | company | tags | status
+     * name | email | phone | company | tags | status | category
      */
     const normalizedRows = rows.map((row, index) => ({
       rowNumber: index + 2, // Excel header offset
@@ -52,12 +62,14 @@ exports.bulkUploadContacts = async (req, res) => {
       company: row.company?.toString().trim(),
       tags: row.tags,
       status: row.status,
+      category: row.category?.toString().trim(), // 🔥 NEW: category column
     }));
 
     // 🚀 Delegate to Service
     const result = await ContactService.bulkCreate({
       tenantId: req.tenantId,
       rows: normalizedRows,
+      defaultCategoryId, // 🔥 NEW: pass default category
     });
 
     // 🧾 Audit log

@@ -67,6 +67,13 @@ app.use("/api/auth", require("./routes/authRoutes"));
 app.use("/api/users", require("./routes/userRoutes"));
 
 app.use("/api/contact-categories", require("./routes/contactCategoryRoutes"));
+
+// 🔥 UPDATED: Use consolidated contact routes (removed duplicate)
+app.use("/api/contacts", require("./routes/contact.routes"));
+
+// 🔥 ADDED: Segments route
+app.use("/api/segments", require("./routes/segmentation.routes"));
+
 app.use("/api/tenants", require("./routes/tenantRoutes"));
 
 app.use("/api/roles", require("./routes/roleRoutes"));

@@ -2,6 +2,7 @@
 
 const mongoose = require("mongoose");
 const Contact = require("../../models/ContactManagement");
+const ContactCategory = require("../../models/ContactCategory");
 const { enrichContact } = require("../audience/enrichmentService");
 const { deriveAutoTags } = require("../audience/taggingService");
 
@@ -14,6 +15,54 @@ function normalizeTags(tags) {
   if (typeof tags === "string")
     return tags.split(",").map(t => t.trim()).filter(Boolean);
   return [];
+}
+
+/**
+ * Utility: normalize category IDs input
+ */
+function normalizeCategoryIds(categories) {
+  if (!categories) return [];
+  if (Array.isArray(categories)) {
+    return categories
+      .map(c => (typeof c === "string" ? c.trim() : c?.toString?.()))
+      .filter(Boolean);
+  }
+  if (typeof categories === "string") {
+    return categories.split(",").map(c => c.trim()).filter(Boolean);
+  }
+  return [];
+}
+
+/**
+ * Utility: validate category IDs exist and belong to tenant
+ */
+async function validateCategories({ tenantId, categoryIds, session = null }) {
+  if (!categoryIds || categoryIds.length === 0) {
+    throw new Error("Contact must belong to at least one category");
+  }
+
+  const query = ContactCategory.find({
+    _id: { $in: categoryIds },
+    $or: [
+      { tenant: tenantId },
+      { isDefault: true }, // Allow system-wide default categories
+    ],
+    active: true,
+  });
+
+  if (session) {
+    query.session(session);
+  }
+
+  const validCategories = await query;
+
+  if (validCategories.length !== categoryIds.length) {
+    const validIds = validCategories.map(c => c._id.toString());
+    const invalidIds = categoryIds.filter(id => !validIds.includes(id.toString()));
+    throw new Error(`Invalid or inactive category IDs: ${invalidIds.join(", ")}`);
+  }
+
+  return validCategories.map(c => c._id);
 }
 
 /**
@@ -49,7 +98,16 @@ class ContactService {
         company,
         tags,
         status,
+        contactCategories, // 🔥 NEW: category support
       } = payload;
+
+      // 🔒 Validate categories (required)
+      const categoryIds = normalizeCategoryIds(contactCategories);
+      const validatedCategoryIds = await validateCategories({
+        tenantId,
+        categoryIds,
+        session,
+      });
 
       // 🔒 Duplicate check (tenant-safe)
       const exists = await Contact.findOne({ tenantId, email }).session(session);
@@ -68,6 +126,7 @@ class ContactService {
         company,
         status: status || "Active",
         tags: normalizeTags(tags),
+        contactCategories: validatedCategoryIds, // 🔥 NEW
         lastActivity: now,
         createdAt: now,
       });
@@ -112,7 +171,18 @@ class ContactService {
       company,
       tags,
       status,
+      contactCategories, // 🔥 NEW: category support
     } = payload;
+
+    // 🔒 Validate categories if provided
+    if (contactCategories !== undefined) {
+      const categoryIds = normalizeCategoryIds(contactCategories);
+      const validatedCategoryIds = await validateCategories({
+        tenantId,
+        categoryIds,
+      });
+      contact.contactCategories = validatedCategoryIds;
+    }
 
     // 🔒 Email uniqueness on update
     if (email && email !== contact.email) {
@@ -162,7 +232,7 @@ class ContactService {
     const contact = await Contact.findOne({
       _id: contactId,
       tenantId,
-    });
+    }).populate("contactCategories", "name type");
 
     if (!contact) {
       throw new Error("Contact not found");
@@ -180,6 +250,7 @@ class ContactService {
     limit = 10,
     search = "",
     status,
+    categoryId, // 🔥 NEW: filter by category
   }) {
     const filter = { tenantId };
 
@@ -197,10 +268,16 @@ class ContactService {
       filter.status = status;
     }
 
+    // 🔥 NEW: Filter by category
+    if (categoryId) {
+      filter.contactCategories = categoryId;
+    }
+
     const skip = (page - 1) * limit;
 
     const [items, total] = await Promise.all([
       Contact.find(filter)
+        .populate("contactCategories", "name type")
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(limit),
@@ -235,8 +312,31 @@ class ContactService {
    * BULK CREATE (Excel / CSV ready)
    * NOTE: optimized version (no controller logic here)
    */
-  static async bulkCreate({ tenantId, rows }) {
+  static async bulkCreate({ tenantId, rows, defaultCategoryId }) {
     const now = new Date();
+
+    // 🔥 NEW: Validate default category if provided
+    let validDefaultCategoryId = null;
+    if (defaultCategoryId) {
+      const validatedIds = await validateCategories({
+        tenantId,
+        categoryIds: [defaultCategoryId],
+      });
+      validDefaultCategoryId = validatedIds[0];
+    }
+
+    // 🔥 NEW: Pre-fetch all valid categories for this tenant (for row-level validation)
+    const tenantCategories = await ContactCategory.find({
+      $or: [
+        { tenant: tenantId },
+        { isDefault: true },
+      ],
+      active: true,
+    }).select("_id name");
+
+    const categoryNameToId = new Map(
+      tenantCategories.map(c => [c.name.toLowerCase(), c._id])
+    );
 
     const contactsToInsert = [];
     const errors = [];
@@ -245,10 +345,34 @@ class ContactService {
       const row = rows[i];
 
       try {
-        const { name, email, phone, company, tags, status } = row;
+        const { name, email, phone, company, tags, status, category } = row;
 
         if (!name || !email) {
           throw new Error("Name and Email required");
+        }
+
+        // 🔥 NEW: Resolve category from row or use default
+        let resolvedCategoryIds = [];
+
+        if (category) {
+          // Try to match category by name (case-insensitive)
+          const categoryNames = category.split(",").map(c => c.trim().toLowerCase());
+          for (const catName of categoryNames) {
+            const catId = categoryNameToId.get(catName);
+            if (catId) {
+              resolvedCategoryIds.push(catId);
+            }
+          }
+        }
+
+        // Fallback to default category
+        if (resolvedCategoryIds.length === 0 && validDefaultCategoryId) {
+          resolvedCategoryIds = [validDefaultCategoryId];
+        }
+
+        // 🔥 Enforce at least one category
+        if (resolvedCategoryIds.length === 0) {
+          throw new Error("Category required (provide 'category' column or set default)");
         }
 
         // 🔹 temp contact-like object for tagging
@@ -277,6 +401,7 @@ class ContactService {
           tags: Array.from(mergedTags),
           autoTags,
           enrichment,
+          contactCategories: resolvedCategoryIds, // 🔥 NEW
         });
 
       } catch (err) {

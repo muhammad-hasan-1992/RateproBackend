@@ -80,7 +80,7 @@ const surveySchema = new mongoose.Schema(
 
       categories: [{
         type: mongoose.Schema.Types.ObjectId,
-        ref: "UserCategory" // employee, customer, vendor etc
+        ref: "ContactCategory"  // 🔥 Changed from "UserCategory"
       }],
 
       users: [{

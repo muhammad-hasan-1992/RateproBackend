@@ -4,7 +4,7 @@ const jwt = require("jsonwebtoken");
 const User = require("../models/User");
 const Tenant = require("../models/Tenant");
 const OTP = require("../models/OTP");
-const UserCategory = require('../models/ContactCategory');
+// const UserCategory = require('../models/ContactCategory');
 const Department = require("../models/Department")
 const Permission = require("../models/Permission");
 const sendEmail = require("../utils/sendEmail");
@@ -46,7 +46,7 @@ const createUserSchema = Joi.object({
   tenantName: Joi.string().min(2).max(100).optional(),
   department: Joi.string().optional(),
   tenant: Joi.string().optional(),
-  userCategories: Joi.array().items(Joi.string().hex().length(24)).optional(),
+  // userCategories: Joi.array().items(Joi.string().hex().length(24)).optional(),
 });
 
 const updateUserSchema = Joi.object({
@@ -62,7 +62,7 @@ const updateUserSchema = Joi.object({
   }).optional(),
   role: Joi.string().valid("admin", "companyAdmin", "member").optional(),
   companyName: Joi.string().min(2).max(100).optional(),
-  userCategories: Joi.array().items(Joi.string().hex().length(24)).optional(),
+  // userCategories: Joi.array().items(Joi.string().hex().length(24)).optional(),
 });
 
 const getAllUsersSchema = Joi.object({
@@ -393,23 +393,23 @@ exports.bulkCreateUsers = async (req, res) => {
       }
     }
 
-    // 🏷️ 7. Category Mapping (no auto-create, strict match)
-    const allCatNames = new Set();
-    dataRows.forEach(row => {
-      const cats = row[6]?.toString().trim();
-      if (cats) cats.split(",").forEach(c => allCatNames.add(c.trim().toLowerCase()));
-    });
+    // // 🏷️ 7. Category Mapping (no auto-create, strict match)
+    // const allCatNames = new Set();
+    // dataRows.forEach(row => {
+    //   const cats = row[6]?.toString().trim();
+    //   if (cats) cats.split(",").forEach(c => allCatNames.add(c.trim().toLowerCase()));
+    // });
 
-    const categoryMap = new Map();
-    let existingCats = [];
-    if (allCatNames.size) {
-      existingCats = await UserCategory.find({
-        tenant: tenantId,
-        name: { $in: Array.from(allCatNames) },
-        active: true,
-      });
-      existingCats.forEach(cat => categoryMap.set(cat.name.toLowerCase(), cat._id.toString()));
-    }
+    // const categoryMap = new Map();
+    // let existingCats = [];
+    // if (allCatNames.size) {
+    //   existingCats = await UserCategory.find({
+    //     tenant: tenantId,
+    //     name: { $in: Array.from(allCatNames) },
+    //     active: true,
+    //   });
+    //   existingCats.forEach(cat => categoryMap.set(cat.name.toLowerCase(), cat._id.toString()));
+    // }
 
     // ⚙️ 8. Process Rows (batched)
     const successes = [];
@@ -433,29 +433,29 @@ exports.bulkCreateUsers = async (req, res) => {
           }
 
           // ✅ Category resolve
-          let userCategoryIds = [];
-          let userType = "internal";
-          if (categoriesStr) {
-            const catNames = categoriesStr
-              .split(",")
-              .map(c => c.trim().toLowerCase())
-              .filter(c => c);
+          // let userCategoryIds = [];
+          // let userType = "internal";
+          // if (categoriesStr) {
+          //   const catNames = categoriesStr
+          //     .split(",")
+          //     .map(c => c.trim().toLowerCase())
+          //     .filter(c => c);
 
-            userCategoryIds = catNames
-              .map(n => categoryMap.get(n))
-              .filter(id => id);
+          //   userCategoryIds = catNames
+          //     .map(n => categoryMap.get(n))
+          //     .filter(id => id);
 
-            if (catNames.length !== userCategoryIds.length) {
-              const missingCat = catNames.find(n => !categoryMap.has(n));
-              errors.push({ rowIndex, email, message: `Category not found: ${missingCat}` });
-              return;
-            }
+          //   if (catNames.length !== userCategoryIds.length) {
+          //     const missingCat = catNames.find(n => !categoryMap.has(n));
+          //     errors.push({ rowIndex, email, message: `Category not found: ${missingCat}` });
+          //     return;
+          //   }
 
-            const hasExternal = userCategoryIds.some(id =>
-              existingCats.find(c => c._id.toString() === id && c.type === "external")
-            );
-            userType = hasExternal ? "external" : "internal";
-          }
+          //   const hasExternal = userCategoryIds.some(id =>
+          //     existingCats.find(c => c._id.toString() === id && c.type === "external")
+          //   );
+          //   userType = hasExternal ? "external" : "internal";
+          // }
 
           // ✅ Schema validation
           const isActive = statusStr.toLowerCase() === "active";
@@ -509,8 +509,8 @@ exports.bulkCreateUsers = async (req, res) => {
             phone: "",
             bio: "",
             avatar: { public_id: "", url: "" },
-            userCategories: userCategoryIds,
-            userType,
+            // userCategories: userCategoryIds,
+            // userType,
             customRoles: [],
             surveyStats: null,
           });
@@ -680,24 +680,24 @@ exports.createUser = async (req, res) => {
     }
 
     // ✅ 7. User Categories Validation
-    let userCategories = [];
-    let validCategories = [];
-    if (req.body.userCategories?.length) {
-      validCategories = await UserCategory.find({
-        _id: { $in: req.body.userCategories },
-        active: true,
-        $or: [
-          { tenant: tenantId }, // tenant-specific
-          { tenant: null }      // global category
-        ]
-      });
+    // let userCategories = [];
+    // let validCategories = [];
+    // if (req.body.userCategories?.length) {
+    //   validCategories = await UserCategory.find({
+    //     _id: { $in: req.body.userCategories },
+    //     active: true,
+    //     $or: [
+    //       { tenant: tenantId }, // tenant-specific
+    //       { tenant: null }      // global category
+    //     ]
+    //   });
 
-      if (validCategories.length !== req.body.userCategories.length) {
-        return res.status(400).json({ message: 'Invalid or unauthorized user categories' });
-      }
+    //   if (validCategories.length !== req.body.userCategories.length) {
+    //     return res.status(400).json({ message: 'Invalid or unauthorized user categories' });
+    //   }
 
-      userCategories = validCategories.map(c => c._id);
-    }
+    //   userCategories = validCategories.map(c => c._id);
+    // }
 
     // ✅ 8. Password Hashing
     const hashedPassword = await bcrypt.hash(password, 10);
@@ -728,10 +728,10 @@ exports.createUser = async (req, res) => {
         name, email, password: hashedPassword, role, tenant: tenantId,
         department: role === 'member' ? department : null,
         isVerified: false, createdBy: currentUser._id,
-        userCategories,
-        userType: userCategories.some(id =>
-          validCategories.find(c => c._id.toString() === id.toString())?.type === 'external'
-        ) ? 'external' : 'internal'
+        // userCategories,
+        // userType: userCategories.some(id =>
+        //   validCategories.find(c => c._id.toString() === id.toString())?.type === 'external'
+        // ) ? 'external' : 'internal'
       });
     }
 
@@ -881,21 +881,21 @@ exports.updateUser = async (req, res, next) => {
     }
 
     // --- USER CATEGORIES UPDATE ---
-    if (updates.userCategories) {
-      const categoryIds = updates.userCategories;
-      const validCategories = await UserCategory.find({
-        _id: { $in: categoryIds },
-        tenant: user.tenant?._id || req.tenantId,
-        active: true,
-      });
+    // if (updates.userCategories) {
+    //   const categoryIds = updates.userCategories;
+    //   const validCategories = await UserCategory.find({
+    //     _id: { $in: categoryIds },
+    //     tenant: user.tenant?._id || req.tenantId,
+    //     active: true,
+    //   });
 
-      if (validCategories.length !== categoryIds.length) {
-        return res.status(400).json({ message: 'Invalid user categories' });
-      }
+    //   if (validCategories.length !== categoryIds.length) {
+    //     return res.status(400).json({ message: 'Invalid user categories' });
+    //   }
 
-      updates.userCategories = validCategories.map(c => c._id);
-      updates.userType = validCategories.some(c => c.type === 'external') ? 'external' : 'internal';
-    }
+    //   updates.userCategories = validCategories.map(c => c._id);
+    //   updates.userType = validCategories.some(c => c.type === 'external') ? 'external' : 'internal';
+    // }
 
     // ----- ROLE BASED FIELD CONTROL -----
     const roleFieldsMap = {
@@ -1235,7 +1235,7 @@ exports.getAllUsers = async (req, res, next) => {
     const total = await User.countDocuments(query);
     const users = await User.find(query)
       .select("-password")
-      .populate("tenant customRoles department userCategories")
+      .populate("tenant customRoles department")
       .sort({ [sort]: -1 })
       .skip((page - 1) * limit)
       .limit(parseInt(limit));

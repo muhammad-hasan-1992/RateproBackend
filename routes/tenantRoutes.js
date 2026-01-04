@@ -22,11 +22,11 @@ const {getTenant, updateTenant, getMyTenant, updateMyPlan } = require('../contro
 const { protect } = require('../middlewares/authMiddleware'); // Middleware to set req.user
 
 
-// router.get('/me', protect, getMyTenant);
+router.get('/me', protect, getMyTenant);
 // router.patch('/me/plan', protect, updateMyPlan);
 
-// router.put('/:tenantId', protect, updateTenant);
-// router.get('/:id', protect, getTenant);
+router.put('/:tenantId', protect, updateTenant);
+router.get('/:id', protect, getTenant);
 
 
 

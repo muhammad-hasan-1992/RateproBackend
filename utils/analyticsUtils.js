@@ -3,21 +3,34 @@ exports.calculateNPS = (responses) => {
   if (!responses.length) return { score: 0, promoters: 0, detractors: 0, passives: 0 };
 
   let promoters = 0, detractors = 0, passives = 0;
+  let validResponses = 0;
 
   responses.forEach(r => {
-    const score = Number(r.npsScore);
-    if (score >= 9) promoters++;
-    else if (score <= 6) detractors++;
+    // Check for NPS score in 'score' field (the model uses 'score' for NPS 0-10)
+    const npsValue = r.score !== undefined && r.score !== null ? Number(r.score) : null;
+    
+    if (npsValue === null || isNaN(npsValue)) return; // Skip responses without NPS score
+    
+    validResponses++;
+    
+    if (npsValue >= 9) promoters++;
+    else if (npsValue <= 6) detractors++;
     else passives++;
   });
 
-  const nps = ((promoters - detractors) / responses.length) * 100;
+  // If no valid NPS responses, return null score to indicate N/A
+  if (validResponses === 0) {
+    return { score: null, promoters: 0, detractors: 0, passives: 0, totalResponses: 0 };
+  }
+
+  const nps = ((promoters - detractors) / validResponses) * 100;
 
   return {
     score: Number(nps.toFixed(2)),
     promoters,
     detractors,
-    passives
+    passives,
+    totalResponses: validResponses
   };
 };
 

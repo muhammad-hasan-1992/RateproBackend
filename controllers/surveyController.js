@@ -1056,7 +1056,10 @@ exports.getSurveyResponses = async (req, res, next) => {
             startDate,
             endDate,
             sort = "-createdAt",
-            anonymous // optional: true|false to filter by anonymity
+            anonymous, // optional: true|false to filter by anonymity
+            sentiment, // optional: positive|neutral|negative
+            npsCategory, // optional: promoter|passive|detractor
+            hasContact // optional: true|false to filter by identified respondents
         } = req.query;
 
         await Logger.info("📥 Fetching survey responses started", {
@@ -1073,7 +1076,7 @@ exports.getSurveyResponses = async (req, res, next) => {
         }
 
         // Ensure survey exists and belongs to tenant
-        const survey = await Survey.findOne({ _id: surveyId, tenant: req.user.tenant, deleted: false }).select("_id tenant");
+        const survey = await Survey.findOne({ _id: surveyId, tenant: req.user.tenant, deleted: false }).select("_id tenant title");
         if (!survey) {
             await Logger.warn("⚠️ Survey not found or access denied", { surveyId, tenantId: req.user?.tenant });
             return res.status(404).json({ message: "Survey not found or access denied" });
@@ -1082,14 +1085,14 @@ exports.getSurveyResponses = async (req, res, next) => {
         // Build query
         const query = { survey: new mongoose.Types.ObjectId(surveyId) };
 
-        // Rating range
+        // Rating range filter
         if (typeof minRating !== "undefined" || typeof maxRating !== "undefined") {
             query.rating = {};
             if (typeof minRating !== "undefined") query.rating.$gte = Number(minRating);
             if (typeof maxRating !== "undefined") query.rating.$lte = Number(maxRating);
         }
 
-        // Date range
+        // Date range filter
         if (startDate || endDate) {
             query.createdAt = {};
             if (startDate) {
@@ -1110,11 +1113,31 @@ exports.getSurveyResponses = async (req, res, next) => {
             }
         }
 
-        // Anonymous filter (optional)
+        // Anonymous filter
         if (typeof anonymous !== "undefined") {
             const a = String(anonymous).toLowerCase();
             if (a === "true") query.isAnonymous = true;
             else if (a === "false") query.isAnonymous = false;
+        }
+
+        // Sentiment filter (from AI analysis)
+        if (sentiment && ["positive", "neutral", "negative"].includes(sentiment)) {
+            query["analysis.sentiment"] = sentiment;
+        }
+
+        // NPS Category filter
+        if (npsCategory && ["promoter", "passive", "detractor"].includes(npsCategory)) {
+            query["analysis.npsCategory"] = npsCategory;
+        }
+
+        // Has identified contact filter
+        if (typeof hasContact !== "undefined") {
+            const hc = String(hasContact).toLowerCase();
+            if (hc === "true") {
+                query.contact = { $ne: null };
+            } else if (hc === "false") {
+                query.$or = [{ contact: null }, { contact: { $exists: false } }];
+            }
         }
 
         // Pagination safety
@@ -1124,29 +1147,107 @@ exports.getSurveyResponses = async (req, res, next) => {
         const total = await SurveyResponse.countDocuments(query);
         const totalPages = Math.ceil(total / limitNum);
 
-        // Fetch responses (populate user with minimal fields)
+        // Fetch responses - populate BOTH user AND contact
         const responses = await SurveyResponse.find(query)
             .select("-__v")
-            .populate("user", "name email")
+            .populate("user", "name email avatar")
+            .populate("contact", "name email phone tags") // 🔥 NEW: Populate contact for invited responses
             .sort(sort)
             .skip((pageNum - 1) * limitNum)
             .limit(limitNum)
             .lean();
+
+        // 🔥 Transform responses to include respondent info
+        const transformedResponses = responses.map(response => {
+            // Determine respondent type and info
+            let respondent = null;
+            let respondentType = "anonymous";
+
+            if (response.isAnonymous) {
+                respondentType = "anonymous";
+                respondent = { displayName: "Anonymous", type: "anonymous" };
+            } else if (response.contact) {
+                // Invited response - identified via contact
+                respondentType = "invited";
+                respondent = {
+                    type: "contact",
+                    id: response.contact._id,
+                    name: response.contact.name || null,
+                    email: response.contact.email || null,
+                    phone: response.contact.phone || null,
+                    displayName: response.contact.name || response.contact.email || response.contact.phone || "Unknown Contact",
+                    tags: response.contact.tags || []
+                };
+            } else if (response.user) {
+                // Authenticated user response
+                respondentType = "authenticated";
+                respondent = {
+                    type: "user",
+                    id: response.user._id,
+                    name: response.user.name || null,
+                    email: response.user.email || null,
+                    displayName: response.user.name || response.user.email || "Unknown User",
+                    avatar: response.user.avatar || null
+                };
+            } else {
+                // Public response without identification
+                respondentType = "public";
+                respondent = { displayName: "Public Respondent", type: "public" };
+            }
+
+            return {
+                ...response,
+                respondent,
+                respondentType,
+                // Keep original fields for backward compatibility
+                user: response.user,
+                contact: response.contact
+            };
+        });
+
+        // Calculate summary stats for this result set
+        const stats = {
+            total,
+            byRespondentType: {
+                anonymous: transformedResponses.filter(r => r.respondentType === "anonymous").length,
+                invited: transformedResponses.filter(r => r.respondentType === "invited").length,
+                authenticated: transformedResponses.filter(r => r.respondentType === "authenticated").length,
+                public: transformedResponses.filter(r => r.respondentType === "public").length
+            },
+            bySentiment: {
+                positive: transformedResponses.filter(r => r.analysis?.sentiment === "positive").length,
+                neutral: transformedResponses.filter(r => r.analysis?.sentiment === "neutral").length,
+                negative: transformedResponses.filter(r => r.analysis?.sentiment === "negative").length
+            },
+            byNpsCategory: {
+                promoter: transformedResponses.filter(r => r.analysis?.npsCategory === "promoter").length,
+                passive: transformedResponses.filter(r => r.analysis?.npsCategory === "passive").length,
+                detractor: transformedResponses.filter(r => r.analysis?.npsCategory === "detractor").length
+            }
+        };
 
         await Logger.info("✅ Survey responses fetched successfully", {
             surveyId,
             total,
             page: pageNum,
             limit: limitNum,
-            tenantId: req.user?.tenant
+            tenantId: req.user?.tenant,
+            stats
         });
+
+        console.log(stats, transformedResponses);
 
         res.status(200).json({
             total,
             totalPages,
             page: pageNum,
             limit: limitNum,
-            responses,
+            survey: {
+                _id: survey._id,
+                title: survey.title
+            },
+            stats,
+            responses: transformedResponses,
         });
     } catch (err) {
         await Logger.error("💥 Error fetching survey responses", { error: err.message, stack: err.stack });

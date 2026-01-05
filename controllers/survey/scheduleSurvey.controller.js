@@ -1,7 +1,7 @@
 // controllers/survey/scheduleSurvey.controller.js
 const Survey = require("../../models/Survey");
-const schedulingService = require("../../services/survey/schedulingService");
-const { scheduleValidator } = require("../../validators/survey/scheduleValidator");
+const schedulingService = require("../../services/survey/SchedulingService");
+const { scheduleValidator } = require("../../validators/scheduleValidator");
 const Logger = require("../../utils/auditLog");
 
 exports.scheduleSurvey = async (req, res, next) => {

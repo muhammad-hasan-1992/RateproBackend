@@ -94,7 +94,7 @@ async function generateInvitesForSurvey(surveyOrId, recipients = [], tenantId, c
   // Find existing invites for this survey and tenant to avoid duplicates
   const existingQueryOrs = [];
   for (const r of uniqueRecipients) {
-    if (r.userId) existingQueryOrs.push({ user: mongoose.Types.ObjectId(r.userId) });
+    if (r.userId) existingQueryOrs.push({ user: new mongoose.Types.ObjectId(r.userId) });
     if (r.email) existingQueryOrs.push({ "contact.email": r.email });
     if (r.phone) existingQueryOrs.push({ "contact.phone": r.phone });
   }
@@ -131,15 +131,15 @@ async function generateInvitesForSurvey(surveyOrId, recipients = [], tenantId, c
 
     // build invite doc
     const doc = {
-      survey: mongoose.Types.ObjectId(surveyId),
-      tenant: mongoose.Types.ObjectId(tenantId),
+      survey: new mongoose.Types.ObjectId(surveyId),
+      tenant: new mongoose.Types.ObjectId(tenantId),
       token: await ensureUniqueToken(),
       status: "sent",
       createdAt: new Date()
     };
 
     if (r.userId) {
-      doc.user = mongoose.Types.ObjectId(r.userId);
+      doc.user = new mongoose.Types.ObjectId(r.userId);
     } else {
       doc.contact = {
         name: r.name || "",
@@ -149,7 +149,7 @@ async function generateInvitesForSurvey(surveyOrId, recipients = [], tenantId, c
     }
 
     // optional meta
-    if (createdBy) doc.createdBy = mongoose.Types.ObjectId(createdBy);
+    if (createdBy) doc.createdBy = new mongoose.Types.ObjectId(createdBy);
 
     docsToInsert.push(doc);
   }

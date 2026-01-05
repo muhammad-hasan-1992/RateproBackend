@@ -2,28 +2,44 @@
 const responseEvents = require("../utils/events/responseEvents");
 const SurveyResponse = require("../models/SurveyResponse");
 const Survey = require("../models/Survey");
-const { analyzeFeedbackSentiment } = require("../services/ai/feedbackAI.service");
-const { createActionFromFeedback } = require("../services/actions/actionService");
+const { processPostSurveyResponse } = require("../services/postResponse/postResponseProcessor");
+const Logger = require("../utils/auditLog");
 
+/**
+ * Event listener for response.created events (primarily from anonymous responses)
+ * Triggers the same post-processing pipeline as invited responses
+ */
 responseEvents.on("response.created", async (data) => {
   try {
-    const response = await SurveyResponse.findById(data.responseId);
-    const survey = await Survey.findById(data.surveyId);
+    const { responseId, surveyId, tenantId, isAnonymous } = data;
 
-    if (!response || !survey) return;
+    const response = await SurveyResponse.findById(responseId);
+    const survey = await Survey.findById(surveyId);
 
-    const analysis = await analyzeFeedbackSentiment(response, survey);
+    if (!response || !survey) {
+      Logger.warn("responseProcessor", "Response or survey not found for event", {
+        context: { responseId, surveyId }
+      });
+      return;
+    }
 
-    if (!analysis.shouldGenerateAction) return;
-
-    await createActionFromFeedback({
-      analysis,
+    // Run the same post-processing pipeline
+    await processPostSurveyResponse({
       response,
       survey,
-      tenantId: data.tenantId,
+      tenantId
+    });
+
+    Logger.info("responseProcessor", "Event-driven post-processing completed", {
+      context: { responseId, surveyId, isAnonymous }
     });
 
   } catch (err) {
-    console.error("Response pipeline failed:", err.message);
+    Logger.error("responseProcessor", "Response pipeline failed", {
+      error: err,
+      context: { responseId: data.responseId }
+    });
   }
 });
+
+console.log("[responseProcessor.worker] Event listeners registered");

@@ -75,7 +75,7 @@ exports.getOperationalDashboard = async (req, res, next) => {
       Action.countDocuments({ tenant: tenantId, status: { $in: ["open", "in-progress"] } }),
       Promise.resolve(null),
       FeedbackAnalysis.aggregate([
-        { $match: { tenant: mongoose.Types.ObjectId(tenantId) } },
+        { $match: { tenant: new mongoose.Types.ObjectId(tenantId) } },
         { $unwind: { path: "$categories", preserveNullAndEmptyArrays: false } },
         { $group: { _id: "$categories", count: { $sum: 1 } } },
         { $sort: { count: -1 } },

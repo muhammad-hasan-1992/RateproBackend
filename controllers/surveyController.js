@@ -1080,7 +1080,7 @@ exports.getSurveyResponses = async (req, res, next) => {
         }
 
         // Build query
-        const query = { survey: mongoose.Types.ObjectId(surveyId) };
+        const query = { survey: new mongoose.Types.ObjectId(surveyId) };
 
         // Rating range
         if (typeof minRating !== "undefined" || typeof maxRating !== "undefined") {

@@ -129,6 +129,11 @@ class Logger {
     return await this.log(functionName, message, 'WARNING', additionalData);
   }
 
+  // Alias for warning (common convention)
+  static async warn(functionName, message, additionalData = {}) {
+    return await this.warning(functionName, message, 'WARN', additionalData);
+  }
+
   static async error(functionName, message, additionalData = {}) {
     return await this.log(functionName, message, 'ERROR', additionalData);
   }

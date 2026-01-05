@@ -40,6 +40,10 @@ const surveyInviteSchema = new mongoose.Schema({
     default: "sent"
   },
 
+  openedAt: {
+    type: Date
+  },
+
   expiresAt: {
     type: Date,
     default: () => new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) // 30 days

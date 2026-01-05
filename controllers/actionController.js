@@ -574,7 +574,7 @@ exports.assignAction = async (req, res, next) => {
     }
 
     const oldAssignee = action.assignedTo ? action.assignedTo.toString() : null;
-    const from = oldAssignee ? mongoose.Types.ObjectId(oldAssignee) : null;
+    const from = oldAssignee ? new mongoose.Types.ObjectId(oldAssignee) : null;
 
     action.assignedTo = newAssignee ? newAssignee._id : null;
     action.assignedToTeam = team || action.assignedToTeam;

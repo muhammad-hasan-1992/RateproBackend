@@ -23,20 +23,29 @@
 // };
 const { Queue } = require("bullmq");
 const { createQueue } = require("./index");
+const { processPostSurveyResponse } = require("../services/postResponse/postResponseProcessor");
 
 const POST_RESPONSE_QUEUE = "post-response-processing";
 
+// Pass the processor as fallback for when queues are disabled
 const postResponseQueue = createQueue(
   Queue,
   POST_RESPONSE_QUEUE,
   {
     defaultJobOptions: {
       attempts: 3,
-      backoff: { type: "exponential", delay: 5000 },
-      removeOnComplete: true,
-      removeOnFail: false
+      backoff: {
+        type: "exponential",
+        delay: 5000
+      },
+      removeOnComplete: 100,
+      removeOnFail: 50
     }
-  }
+  },
+  processPostSurveyResponse  // 👈 Inline fallback processor
 );
 
-module.exports = { postResponseQueue, POST_RESPONSE_QUEUE };
+module.exports = {
+  postResponseQueue,
+  POST_RESPONSE_QUEUE
+};

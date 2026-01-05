@@ -2,8 +2,8 @@ const { Worker } = require("bullmq");
 const redis = require("../config/redis");
 const { POST_RESPONSE_QUEUE } = require("../queues/postResponse.queue");
 const { postResponseDLQ } = require("../queues/postResponse.dlq");
-const { processPostSurveyResponse } = require("../services/surveyService");
-const Logger = require("../utils/logger");
+const { processPostSurveyResponse } = require("../services/postResponse/postResponseProcessor");
+const Logger = require("../utils/auditLog");
 
 // 🔒 DEV / QUEUE SAFETY CHECK
 if (process.env.ENABLE_QUEUES !== "true") {

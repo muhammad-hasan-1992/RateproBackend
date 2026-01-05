@@ -457,7 +457,7 @@ exports.calculateNPSScore = async (tenantId, startDate) => {
       },
       {
         $match: {
-          "surveyData.tenant": mongoose.Types.ObjectId(tenantId),
+          "surveyData.tenant": new mongoose.Types.ObjectId(tenantId),
           createdAt: { $gte: startDate },
           score: { $exists: true, $gte: 0, $lte: 10 }
         }
@@ -592,7 +592,7 @@ exports.calculateResponseRate = async (tenantId, startDate) => {
 exports.calculateAlertCounts = async (tenantId) => {
   try {
     const actionCounts = await Action.aggregate([
-      { $match: { tenant: mongoose.Types.ObjectId(tenantId), status: { $ne: "resolved" } } },
+      { $match: { tenant: new mongoose.Types.ObjectId(tenantId), status: { $ne: "resolved" } } },
       { $group: { _id: "$priority", count: { $sum: 1 } } }
     ]);
 

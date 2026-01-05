@@ -13,6 +13,10 @@ const { syncSystemSegments } = require("./crons/systemSegments.cron.js");
 const { autoCloseSurveys } = require("./crons/autoCloseSurveys.cron.js"); 
 const { recomputeAudienceIntelligence } = require("./jobs/audience/recomputeAudienceIntelligence.job");
 
+// Event listeners for response processing pipeline
+require("./workers/responseProcessor.worker");
+require("./utils/events/contactSyncListeners");
+
 // MongoDB connection and seeding
 const startServer = async () => {
   try {
@@ -91,10 +95,12 @@ app.use("/api/sms", require("./routes/smsRoutes"));
 app.use("/api/whatsapp", require("./routes/whatsappRoutes"));
 
 app.use("/api/insights", require("./routes/insightRoutes"));
-app.use("/api/feedback", require("./routes/feedbackRoutes"));
+// DEPRECATED: Feedback routes consolidated into /api/surveys/feedback/*
+// app.use("/api/feedback", require("./routes/feedbackRoutes"));
 
 app.use("/api/distribution", require("./routes/distributionRoutes"));
-app.use("/api/dashboard", require("./routes/dashboardRoutes"));
+// DEPRECATED: Dashboard routes consolidated into /api/surveys/dashboards/*
+// app.use("/api/dashboard", require("./routes/dashboardRoutes"));
 
 app.use("/api/tickets", require("./routes/ticketRoutes"));
 app.use("/api/email-templates", require("./routes/emailTemplateRoutes"));

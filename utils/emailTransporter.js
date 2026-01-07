@@ -24,30 +24,26 @@
 
 // module.exports = getTransporter;
 // utils/emailTransporter.js
-const nodemailer = require('nodemailer');
+// utils/emailTransporter.js
+const sgMail = require('@sendgrid/mail');
 
-let transporter;
+// API Key ko set karein
+sgMail.setApiKey(process.env.SENDGRID_API_KEY);
 
 const getTransporter = () => {
-  if (!transporter) {
-    transporter = nodemailer.createTransport({
-      host: 'smtp.sendgrid.net',
-      port: 587,
-      secure: false, // Port 587 ke liye hamesha false rakhein
-      auth: {
-        user: 'apikey', 
-        pass: process.env.SMTP_PASS, // Apni SG... API Key check karein
-      },
-      // Ye extra settings connection reset ko rokne mein madad karti hain
-      tls: {
-        rejectUnauthorized: false, // Unauthorized certificates ignore karne ke liye
-        minVersion: 'TLSv1.2'      // SendGrid ko TLS 1.2+ chahiye hota hai
-      },
-      connectionTimeout: 10000, // 10 seconds timeout
-    });
-  }
-
-  return transporter;
+  // Hum abhi bhi purane structure ko follow kar rahe hain taake code crash na ho
+  return {
+    sendMail: async (mailOptions) => {
+      const msg = {
+        to: mailOptions.to,
+        from: mailOptions.from, // Ensure karein ye verified email hai
+        subject: mailOptions.subject,
+        text: mailOptions.text,
+        html: mailOptions.html,
+      };
+      return sgMail.send(msg);
+    }
+  };
 };
 
 module.exports = getTransporter;

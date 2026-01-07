@@ -13,6 +13,7 @@
   "type": "commonjs",
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
+    "@sendgrid/mail": "^8.1.6",
     "axios": "^1.11.0",
     "bcryptjs": "^3.0.2",
     "bullmq": "^5.66.4",

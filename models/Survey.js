@@ -48,6 +48,12 @@ const surveySchema = new mongoose.Schema(
       en: { title: String, description: String },
       ar: { title: String, description: String },
     },
+    language: {
+      type: String,
+      enum: ["en", "ar"],
+      default: "en",
+      required: true
+    },
     questions: [questionSchema],
     tenant: { type: mongoose.Schema.Types.ObjectId, ref: "Tenant", required: true },
     settings: {

@@ -83,7 +83,7 @@ exports.validateSurveyUpdate = (data) => {
     title: Joi.string().optional(),
     description: Joi.string().allow("", null).optional(),
     category: Joi.string().allow("", null).optional(),
-    language: Joi.string().valid("en", "ar").optional(),
+    language: Joi.string().valid("en", "ar").default("en"),
     themeColor: Joi.string().allow("", null).optional(),
     questions: Joi.array().items(Joi.object().unknown(true)).optional(),
     settings: Joi.object().unknown(true).optional(),

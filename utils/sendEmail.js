@@ -106,6 +106,7 @@ const sendEmail = async ({
 
     const mailOptions = {
       from: `${process.env.FROM_NAME} <${process.env.FROM_EMAIL}>`,
+      // from: 'shoukat.hasan@gmail.com',
       to,
       subject: finalSubject || 'Notification',
       html: finalHTML,

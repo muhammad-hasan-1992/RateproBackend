@@ -487,7 +487,7 @@ exports.aiTranslateSurvey = async (req, res, next) => {
 // @access  Private
 exports.aiGenerateFromCompanyProfile = async (req, res, next) => {
   try {
-    // ✅ Extract and validate input data
+    // ✅ FIX: Accept both 'language' (canonical: 'en'/'ar') and legacy 'languages' array
     const {
       industry,
       products,
@@ -495,10 +495,28 @@ exports.aiGenerateFromCompanyProfile = async (req, res, next) => {
       goal,
       questionCount = 8,
       includeNPS = true,
-      languages = ['English'],
+      language,           // ✅ NEW: canonical value 'en' or 'ar'
+      languages,          // Legacy: array like ['English']
       additionalInstructions = '',
       tone = 'friendly-professional'
     } = req.body;
+
+    // ✅ FIX: Normalize language to canonical value
+    let surveyLanguage = 'en'; // default
+    if (language === 'ar' || language === 'Arabic') {
+      surveyLanguage = 'ar';
+    } else if (language === 'en' || language === 'English') {
+      surveyLanguage = 'en';
+    } else if (Array.isArray(languages) && languages.length > 0) {
+      // Legacy support: check array
+      const firstLang = languages[0];
+      if (firstLang === 'ar' || firstLang === 'Arabic' || firstLang.toLowerCase().includes('arabic')) {
+        surveyLanguage = 'ar';
+      }
+    }
+
+    // ✅ FIX: Get display language name for prompt
+    const languageDisplayName = surveyLanguage === 'ar' ? 'Arabic' : 'English';
 
     console.log('🚀 AI Generation Request - FIXED:', {
       industry,
@@ -506,7 +524,9 @@ exports.aiGenerateFromCompanyProfile = async (req, res, next) => {
       targetAudience,
       goal,
       questionCount,
-      additionalInstructions: additionalInstructions.substring(0, 100)
+      language: surveyLanguage,  // ✅ Log normalized language
+      languageDisplayName,
+      additionalInstructions: additionalInstructions?.substring(0, 100) || ''
     });
 
     // Handle both authenticated and non-authenticated requests
@@ -523,13 +543,30 @@ exports.aiGenerateFromCompanyProfile = async (req, res, next) => {
     let sampleQuestions = [];
 
     if (industry === 'hospitality') {
-      industryContext = `
+      industryContext = surveyLanguage === 'ar' 
+        ? `
+هذا الاستبيان مخصص لقطاع الضيافة (فندق، مطعم، خدمات سبا).
+التركيز على: تجربة الإقامة الشاملة، راحة ونظافة الغرف، جودة طعام المطعم،
+خدمات السبا والترفيه، سلوك الموظفين واحترافيتهم، اقتراحات للتحسين.
+        `
+        : `
 This is for a HOSPITALITY business (hotel, restaurant, spa services).
 Focus on: overall stay experience, room comfort & cleanliness, restaurant food quality, 
 spa & leisure services, staff behavior & professionalism, suggestions for improvement.
 Target audience are hotel guests who want friendly, professional service evaluation.
-      `;
-      sampleQuestions = [
+        `;
+      
+      // ✅ FIX: Language-specific sample questions
+      sampleQuestions = surveyLanguage === 'ar' ? [
+        { type: "likert", title: "ما مدى رضاك عن تجربة إقامتك بشكل عام؟", options: ["غير راضٍ جداً", "غير راضٍ", "محايد", "راضٍ", "راضٍ جداً"] },
+        { type: "rating", title: "قيّم نظافة وراحة غرفتك", scale: 5 },
+        { type: "likert", title: "كيف تقيّم جودة طعام المطعم لدينا؟", options: ["ضعيف", "مقبول", "جيد", "جيد جداً", "ممتاز"] },
+        { type: "multiple_choice", title: "ما هي مرافق الفندق التي استخدمتها؟", options: ["المطعم", "السبا والعافية", "حمام السباحة", "مركز اللياقة", "خدمة الغرف"] },
+        { type: "likert", title: "ما مدى احترافية ومساعدة موظفينا؟", options: ["ضعيف جداً", "ضعيف", "متوسط", "جيد", "ممتاز"] },
+        { type: "nps", title: "ما مدى احتمالية أن توصي بنا لأصدقائك وعائلتك؟", scale: 10 },
+        { type: "text_short", title: "ما هي اقتراحاتك لتحسين خدماتنا؟" },
+        { type: "single_choice", title: "ما هو الغرض الرئيسي من زيارتك؟", options: ["سفر عمل", "إجازة/استجمام", "مؤتمر/فعالية", "حفل زفاف/احتفال"] }
+      ] : [
         { type: "likert", title: "How satisfied were you with your overall stay experience?", options: ["Very Dissatisfied", "Dissatisfied", "Neutral", "Satisfied", "Very Satisfied"] },
         { type: "rating", title: "Rate the cleanliness and comfort of your room", scale: 5 },
         { type: "likert", title: "How would you rate our restaurant food quality?", options: ["Poor", "Fair", "Good", "Very Good", "Excellent"] },
@@ -541,7 +578,21 @@ Target audience are hotel guests who want friendly, professional service evaluat
       ];
     }
 
-    // ✅ FIXED: Create a clean, valid prompt string
+    // ✅ FIX: Add explicit language instruction to prompt
+    const languageInstruction = surveyLanguage === 'ar' 
+      ? `
+IMPORTANT: Generate ALL survey content in Arabic language only.
+- Survey title must be in Arabic
+- Survey description must be in Arabic  
+- All question titles must be in Arabic
+- All question options must be in Arabic
+- Use formal Arabic suitable for business surveys
+`
+      : `
+Generate all survey content in English language.
+`;
+
+    // ✅ FIXED: Create a clean, valid prompt string with explicit language instruction
     const promptText = `Generate an optimized survey based on this company profile and goal:
 
 Company Profile:
@@ -554,8 +605,9 @@ ${industryContext}
 
 Survey Goal: ${goal || 'Customer satisfaction survey'}
 Question Count: ${questionCount}
-Languages: ${languages.join(', ')}
 Include NPS: ${includeNPS ? 'Yes' : 'No'}
+
+${languageInstruction}
 
 Additional Requirements: ${additionalInstructions}
 
@@ -564,48 +616,18 @@ Generate a JSON response with this structure:
   "success": true,
   "data": {
     "survey": {
-      "title": "Survey Title",
-      "description": "Survey description", 
-      "languages": ["English", "Arabic"]
+      "title": "${surveyLanguage === 'ar' ? 'عنوان الاستبيان بالعربية' : 'Survey Title'}",
+      "description": "${surveyLanguage === 'ar' ? 'وصف الاستبيان بالعربية' : 'Survey description'}", 
+      "language": "${surveyLanguage}"
     },
     "questions": [
       {
         "type": "likert",
-        "title": "How satisfied were you with your overall experience?",
-        "description": "Please rate your satisfaction level",
-        "required": true,
-        "options": ["Very Dissatisfied", "Dissatisfied", "Neutral", "Satisfied", "Very Satisfied"],
-        "settings": {"scale": 5}
-      },
-      {
-        "type": "rating", 
-        "title": "Rate the cleanliness of your room",
+        "title": "${surveyLanguage === 'ar' ? 'نص السؤال بالعربية' : 'Question text'}",
         "description": "",
         "required": true,
-        "options": [],
+        "options": ${surveyLanguage === 'ar' ? '["غير راضٍ جداً", "غير راضٍ", "محايد", "راضٍ", "راضٍ جداً"]' : '["Very Dissatisfied", "Dissatisfied", "Neutral", "Satisfied", "Very Satisfied"]'},
         "settings": {"scale": 5}
-      },
-      {
-        "type": "multiple_choice",
-        "title": "Which hotel facilities did you use?",
-        "description": "Select all that apply",
-        "required": false,
-        "options": ["Restaurant", "Spa", "Pool", "Gym", "Business Center", "Room Service"]
-      },
-      {
-        "type": "nps",
-        "title": "How likely are you to recommend us to others?", 
-        "description": "0 = Not at all likely, 10 = Extremely likely",
-        "required": true,
-        "options": [],
-        "settings": {"scale": 10}
-      },
-      {
-        "type": "text_short",
-        "title": "What can we improve?",
-        "description": "Please share your suggestions",
-        "required": false,
-        "options": []
       }
     ]
   }
@@ -614,8 +636,8 @@ Generate a JSON response with this structure:
 Question types available: rating, single_choice, multiple_choice, text_short, text_long, nps, likert, yes_no, date, number
 
 Make questions industry-specific and relevant to the survey goal.
-For hospitality: Include questions about rooms, food, service, staff, facilities.
-Use ${tone} tone and make questions easy to understand for ${targetAudience}.`;
+Use ${tone} tone and make questions easy to understand for ${targetAudience}.
+${surveyLanguage === 'ar' ? 'Remember: ALL content must be in Arabic.' : ''}`;
 
     // ✅ FIXED: Validate prompt before sending
     if (!promptText || promptText.trim().length === 0) {
@@ -637,20 +659,50 @@ Use ${tone} tone and make questions easy to understand for ${targetAudience}.`;
       const jsonMatch = responseText.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
         const parsedResponse = JSON.parse(jsonMatch[0]);
+        
+        // ✅ FIX: Ensure language is set in response
+        if (parsedResponse.data?.survey) {
+          parsedResponse.data.survey.language = surveyLanguage;
+        }
+        
         console.log('✅ Parsed AI Response:', {
           title: parsedResponse.data?.survey?.title,
           questionCount: parsedResponse.data?.questions?.length,
-          industry: industry,
-          products: formatProducts(products)
+          language: surveyLanguage,
+          industry: industry
         });
         return res.json(parsedResponse);
       }
     } catch (parseError) {
-      error = parseError;
+      console.error('Parse error:', parseError);
     }
 
-    // ✅ ENHANCED: Industry-specific fallback with actual data
-    const fallbackQuestions = sampleQuestions.length > 0 ? sampleQuestions : [
+    // ✅ ENHANCED: Language-specific fallback with actual data
+    const fallbackQuestions = sampleQuestions.length > 0 ? sampleQuestions : (surveyLanguage === 'ar' ? [
+      {
+        type: 'rating',
+        title: 'كيف تقيّم تجربتك الشاملة؟',
+        description: 'يرجى تقييم مستوى رضاك',
+        required: true,
+        options: [],
+        settings: { scale: 5 }
+      },
+      {
+        type: 'nps',
+        title: 'ما مدى احتمالية أن توصي بنا للآخرين؟',
+        description: '0 = غير محتمل على الإطلاق، 10 = محتمل جداً',
+        required: true,
+        options: [],
+        settings: { scale: 10 }
+      },
+      {
+        type: 'text_short',
+        title: 'ما الذي يمكننا تحسينه؟',
+        description: 'يرجى مشاركة اقتراحاتك',
+        required: false,
+        options: []
+      }
+    ] : [
       {
         type: 'rating',
         title: 'How would you rate your overall experience?',
@@ -660,15 +712,8 @@ Use ${tone} tone and make questions easy to understand for ${targetAudience}.`;
         settings: { scale: 5 }
       },
       {
-        type: 'single_choice',
-        title: 'What was the primary purpose of your interaction?',
-        description: '',
-        required: false,
-        options: ['Purchase', 'Information', 'Support', 'Complaint', 'Other']
-      },
-      {
         type: 'nps',
-        title: `How likely are you to recommend us to others?`,
+        title: 'How likely are you to recommend us to others?',
         description: '0 = Not at all likely, 10 = Extremely likely',
         required: true,
         options: [],
@@ -681,15 +726,19 @@ Use ${tone} tone and make questions easy to understand for ${targetAudience}.`;
         required: false,
         options: []
       }
-    ];
+    ]);
 
     const fallbackResponse = {
       success: true,
       data: {
         survey: {
-          title: `${industry?.charAt(0).toUpperCase() + industry?.slice(1) || 'Customer'} Feedback Survey`,
-          description: `We value your feedback about your recent experience with our ${formatProducts(products)} services. Please take a few minutes to share your thoughts.`,
-          languages: languages
+          title: surveyLanguage === 'ar' 
+            ? `استبيان ${industry ? industry : 'رضا العملاء'}`
+            : `${industry?.charAt(0).toUpperCase() + industry?.slice(1) || 'Customer'} Feedback Survey`,
+          description: surveyLanguage === 'ar'
+            ? `نقدر ملاحظاتك حول تجربتك الأخيرة مع خدماتنا. يرجى قضاء بضع دقائق لمشاركة أفكارك.`
+            : `We value your feedback about your recent experience with our ${formatProducts(products)} services. Please take a few minutes to share your thoughts.`,
+          language: surveyLanguage  // ✅ FIX: Include language in response
         },
         questions: fallbackQuestions.slice(0, questionCount)
       }
@@ -699,16 +748,44 @@ Use ${tone} tone and make questions easy to understand for ${targetAudience}.`;
   } catch (error) {
     console.error('❌ AI Generation Error:', error);
 
-    // Return a safe fallback response instead of 500 error
+    // ✅ FIX: Language-aware fallback response
+    const requestedLanguage = req.body.language === 'ar' ? 'ar' : 'en';
+    
     const fallbackResponse = {
       success: true,
       data: {
         survey: {
-          title: 'Customer Feedback Survey',
-          description: 'We value your feedback. Please take a few minutes to share your thoughts.',
-          languages: ['English']
+          title: requestedLanguage === 'ar' ? 'استبيان رضا العملاء' : 'Customer Feedback Survey',
+          description: requestedLanguage === 'ar' 
+            ? 'نقدر ملاحظاتك. يرجى قضاء بضع دقائق لمشاركة أفكارك.'
+            : 'We value your feedback. Please take a few minutes to share your thoughts.',
+          language: requestedLanguage
         },
-        questions: [
+        questions: requestedLanguage === 'ar' ? [
+          {
+            type: 'rating',
+            title: 'كيف تقيّم تجربتك الشاملة؟',
+            description: '',
+            required: true,
+            options: [],
+            settings: { scale: 5 }
+          },
+          {
+            type: 'nps',
+            title: 'ما مدى احتمالية أن توصي بنا للآخرين؟',
+            description: '0 = غير محتمل على الإطلاق، 10 = محتمل جداً',
+            required: true,
+            options: [],
+            settings: { scale: 10 }
+          },
+          {
+            type: 'text_short',
+            title: 'ما الذي يمكننا تحسينه؟',
+            description: 'يرجى مشاركة اقتراحاتك',
+            required: false,
+            options: []
+          }
+        ] : [
           {
             type: 'rating',
             title: 'How would you rate your overall experience?',

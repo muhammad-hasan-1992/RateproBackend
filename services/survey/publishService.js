@@ -50,23 +50,27 @@ module.exports.publish = async ({ surveyId, surveyData, tenantId, userId }) => {
   let survey;
 
   // ═══════════════════════════════════════════════════════════
-  // CASE 1: Publish existing draft survey
+  // CASE 1: Publish existing survey (draft or updated)
   // ═══════════════════════════════════════════════════════════
   if (surveyId) {
-    console.log("📋 [publishService] Loading existing draft survey...");
+    console.log("📋 [publishService] Loading existing survey...");
     
     survey = await Survey.findOne({
       _id: surveyId,
       tenant: tenantObjectId,
-      status: "draft",
       deleted: false
     });
 
     if (!survey) {
-      throw new Error("Survey not found or already published");
+      throw new Error("Survey not found");
     }
     
-    console.log("📋 [publishService] Draft survey loaded:", survey._id);
+    // ✅ FIX: Allow publishing of drafts OR surveys being republished
+    if (survey.status === "active" && !surveyData) {
+      throw new Error("Survey is already published. Use update endpoint for changes.");
+    }
+    
+    console.log("📋 [publishService] Survey loaded:", survey._id, "Status:", survey.status);
   }
   
   // ═══════════════════════════════════════════════════════════

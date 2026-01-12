@@ -47,6 +47,10 @@ const analysisSchema = new mongoose.Schema({
     enum: ["excellent", "good", "average", "poor", "very_poor"],
     default: null
   },
+  // ✅ NEW: Flag for dashboard visibility (Client Requirement 8)
+  flaggedForReview: { type: Boolean, default: false },
+  // ✅ NEW: Track what triggered the analysis
+  triggeredRules: [{ type: String }],
   analyzedAt: { type: Date }
 }, { _id: false });
 

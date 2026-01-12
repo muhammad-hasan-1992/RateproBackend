@@ -60,10 +60,10 @@ exports.createCategory = async (req, res) => {
     });
 
     if (exists) {
-      Logger.info("createCategory", "Category already exists", {
-        context: { tenantId: req.tenantId, name: value.name },
-        req,
-      });
+      // Logger.info("createCategory", "Category already exists", {
+      //   context: { tenantId: req.tenantId, name: value.name },
+      //   req,
+      // });
       return res.status(400).json({ message: "Category already exists" });
     }
 
@@ -73,14 +73,14 @@ exports.createCategory = async (req, res) => {
       createdBy: req.user._id,
     });
 
-    Logger.info("createCategory", "Category created successfully", {
-      context: {
-        categoryId: category._id,
-        tenantId: req.tenantId,
-        createdBy: req.user._id,
-      },
-      req,
-    });
+    // Logger.info("createCategory", "Category created successfully", {
+    //   context: {
+    //     categoryId: category._id,
+    //     tenantId: req.tenantId,
+    //     createdBy: req.user._id,
+    //   },
+    //   req,
+    // });
 
     res.status(201).json({
       success: true,
@@ -158,10 +158,10 @@ exports.getCategories = async (req, res) => {
       { $sort: { isDefault: -1, name: 1 } },
     ]);
 
-    Logger.info("getCategories", "Categories fetched", {
-      context: { tenantId: req.tenantId, count: categories.length },
-      req,
-    });
+    // Logger.info("getCategories", "Categories fetched", {
+    //   context: { tenantId: req.tenantId, count: categories.length },
+    //   req,
+    // });
 
     res.json({
       success: true,
@@ -263,10 +263,10 @@ exports.updateCategory = async (req, res) => {
 
     // 🔒 Prevent editing default/system categories
     if (target.isDefault) {
-      Logger.info("updateCategory", "Attempt to modify default category", {
-        context: { categoryId: req.params.id },
-        req,
-      });
+      // Logger.info("updateCategory", "Attempt to modify default category", {
+      //   context: { categoryId: req.params.id },
+      //   req,
+      // });
       return res.status(400).json({ message: "Default categories cannot be modified" });
     }
 
@@ -296,10 +296,10 @@ exports.updateCategory = async (req, res) => {
       { new: true, runValidators: true }
     );
 
-    Logger.info("updateCategory", "Category updated successfully", {
-      context: { categoryId: category._id, tenantId: req.tenantId },
-      req,
-    });
+    // Logger.info("updateCategory", "Category updated successfully", {
+    //   context: { categoryId: category._id, tenantId: req.tenantId },
+    //   req,
+    // });
 
     res.json({
       success: true,
@@ -340,10 +340,10 @@ exports.deleteCategory = async (req, res) => {
 
     // 🔒 Prevent deleting default categories
     if (target.isDefault) {
-      Logger.info("deleteCategory", "Attempt to delete default category", {
-        context: { categoryId: req.params.id },
-        req,
-      });
+      // Logger.info("deleteCategory", "Attempt to delete default category", {
+      //   context: { categoryId: req.params.id },
+      //   req,
+      // });
       return res.status(400).json({ message: "Default categories cannot be deleted" });
     }
 
@@ -372,10 +372,10 @@ exports.deleteCategory = async (req, res) => {
       { new: true }
     );
 
-    Logger.info("deleteCategory", "Category deactivated successfully", {
-      context: { categoryId: category._id, tenantId: req.tenantId },
-      req,
-    });
+    // Logger.info("deleteCategory", "Category deactivated successfully", {
+    //   context: { categoryId: category._id, tenantId: req.tenantId },
+    //   req,
+    // });
 
     res.json({
       success: true,

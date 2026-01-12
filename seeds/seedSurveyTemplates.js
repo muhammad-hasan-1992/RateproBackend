@@ -147,7 +147,6 @@ const surveyTemplates = [
 
 const seedSurveyTemplates = async () => {
   try {
-    console.log("🚀 Starting survey template seeding...");
 
     // ✅ Find admin user
     const adminUser = await User.findOne({ email: "admin@ratepro.com" });
@@ -155,11 +154,8 @@ const seedSurveyTemplates = async () => {
       throw new Error("Admin user not found. Please create one first.");
     }
 
-    console.log(`👤 Using admin user: ${adminUser.name}`);
-
     // ✅ Clear existing templates
     await SurveyTemplate.deleteMany({});
-    console.log("🗑️ Existing templates cleared.");
 
     // ✅ Assign createdBy = adminUser._id
     const templatesWithCreator = surveyTemplates.map((tpl) => ({
@@ -169,8 +165,6 @@ const seedSurveyTemplates = async () => {
 
     // ✅ Insert templates
     const inserted = await SurveyTemplate.insertMany(templatesWithCreator);
-    console.log(`✅ ${inserted.length} survey templates seeded successfully.`);
-
     return inserted;
   } catch (err) {
     console.error("❌ Error seeding survey templates:", err.message);

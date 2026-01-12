@@ -7,9 +7,10 @@ const Logger = require("../../../utils/auditLog");
 
 module.exports.start = async (responseId) => {
   const response = await SurveyResponse.findById(responseId);
-  const survey = await Survey.findById(response.survey);
-
+  
   if (!response) return;
+
+  const survey = await Survey.findById(response.survey);
 
   const text = (response.answers || [])
     .map(a => a.answer)
@@ -43,8 +44,9 @@ module.exports.start = async (responseId) => {
   Logger.info("autoAction", "Auto action created", {
     context: {
       responseId,
-      actionId: action._id
-    },
-    req
+      actionId: action._id,
+      surveyId: survey._id,
+      tenantId: survey.tenant
+    }
   });
 };

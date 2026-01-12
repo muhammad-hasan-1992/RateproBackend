@@ -268,9 +268,6 @@ exports.createTemplate = async (req, res) => {
     try {
         const { name, subject, body, description, type } = req.body;
 
-        console.log("📥 Entering createTemplate");
-        console.log("📥 Request Body:", req.body);
-
         // Check duplicate template name
         const existingTemplate = await EmailTemplate.findOne({ name });
         if (existingTemplate) {
@@ -291,16 +288,13 @@ exports.createTemplate = async (req, res) => {
         });
 
         await template.save();
-
-        console.log("✅ Template created successfully:", template);
-
-        Logger.info("createTemplate", "Email template created", {
-            context: {
-                templateId: template._id,
-                name
-            },
-            req
-        });
+        // Logger.info("createTemplate", "Email template created", {
+        //     context: {
+        //         templateId: template._id,
+        //         name
+        //     },
+        //     req
+        // });
 
         res.status(201).json({
             success: true,
@@ -335,12 +329,12 @@ exports.getTemplates = async (req, res) => {
         const activeCount = await EmailTemplate.countDocuments({ isActive: true });
         const inactiveCount = await EmailTemplate.countDocuments({ isActive: false });
 
-        Logger.info("getTemplates", "Fetched all email templates", {
-            context: {
-                total: templates.length
-            },
-            req
-        });
+        // Logger.info("getTemplates", "Fetched all email templates", {
+        //     context: {
+        //         total: templates.length
+        //     },
+        //     req
+        // });
 
         res.status(200).json({
             success: true,
@@ -377,12 +371,12 @@ exports.getTemplateById = async (req, res) => {
             });
         }
 
-        Logger.info("getTemplateById", "Fetched email template by ID", {
-            context: {
-                templateId: template._id
-            },
-            req
-        });
+        // Logger.info("getTemplateById", "Fetched email template by ID", {
+        //     context: {
+        //         templateId: template._id
+        //     },
+        //     req
+        // });
     } catch (error) {
         console.error('getTemplateById error:', error);
         Logger.error("getTemplateById", "Failed to fetch email template", {
@@ -476,12 +470,12 @@ exports.updateTemplate = async (req, res) => {
             { new: true, runValidators: true }
         );
 
-        Logger.info("updateTemplate", "Email template updated", {
-            context: {
-                templateId: updatedTemplate._id
-            },
-            req
-        });
+        // Logger.info("updateTemplate", "Email template updated", {
+        //     context: {
+        //         templateId: updatedTemplate._id
+        //     },
+        //     req
+        // });
 
         res.status(200).json({
             success: true,
@@ -510,12 +504,12 @@ exports.deleteTemplate = async (req, res) => {
 
         await EmailTemplate.findByIdAndDelete(req.params.id);
 
-        Logger.info("deleteTemplate", "Email template deleted", {
-            context: {
-                templateId: req.params.id
-            },
-            req
-        });
+        // Logger.info("deleteTemplate", "Email template deleted", {
+        //     context: {
+        //         templateId: req.params.id
+        //     },
+        //     req
+        // });
     } catch (error) {
         console.error('deleteTemplate error:', error);
         Logger.error("deleteTemplate", "Failed to delete email template", {
@@ -538,12 +532,12 @@ exports.toggleTemplateStatus = async (req, res) => {
         template.isActive = !template.isActive;
         await template.save();
 
-        Logger.info("toggleTemplateStatus", `Template ${template.isActive ? 'activated' : 'deactivated'}`, {
-            context: {
-                templateId: template._id
-            },
-            req
-        });
+        // Logger.info("toggleTemplateStatus", `Template ${template.isActive ? 'activated' : 'deactivated'}`, {
+        //     context: {
+        //         templateId: template._id
+        //     },
+        //     req
+        // });
 
         res.status(200).json({
             success: true,

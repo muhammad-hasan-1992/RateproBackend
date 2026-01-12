@@ -501,8 +501,6 @@ exports.createUser = async (req, res) => {
         templateData
       });
 
-      console.log("Template email sent with data:", templateData);
-
       Logger.info("createUser", "Welcome email sent using template", {
         context: {
           userId: req.user?._id,
@@ -1256,7 +1254,6 @@ exports.sendNotification = async (req, res, next) => {
 
     // 🧠 Step 2: Extract fields from request
     const { subject, message } = req.body;
-    console.log("Sending notification to user ID:", req.body);
     const user = await User.findById(req.params.id);
 
     // ❌ Step 3: Check agar user exist nahi karta

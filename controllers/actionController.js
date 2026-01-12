@@ -261,16 +261,16 @@ exports.createAction = async (req, res, next) => {
     //   try { await dashboardMetrics.updateDashboardMetrics(req.user.tenant); } catch (e) { /* don't block response */ }
     // }
 
-    Logger.info("createAction", "Action created successfully", {
-      context: {
-        userId: req.user._id,
-        actionId: action._id,
-        tenantId: req.user.tenant,
-        priority: action.priority,
-        assignedTo: action.assignedTo
-      },
-      req
-    });
+    // Logger.info("createAction", "Action created successfully", {
+    //   context: {
+    //     userId: req.user._id,
+    //     actionId: action._id,
+    //     tenantId: req.user.tenant,
+    //     priority: action.priority,
+    //     assignedTo: action.assignedTo
+    //   },
+    //   req
+    // });
 
     res.status(201).json({ success: true, message: "Action created successfully", data: action });
 
@@ -348,14 +348,14 @@ exports.getActions = async (req, res, next) => {
       }
     ]);
 
-    Logger.info("getActions", "Fetched actions", {
-      context: {
-        userId: req.user._id,
-        tenantId: req.user.tenant,
-        total: totalActions
-      },
-      req
-    });
+    // Logger.info("getActions", "Fetched actions", {
+    //   context: {
+    //     userId: req.user._id,
+    //     tenantId: req.user.tenant,
+    //     total: totalActions
+    //   },
+    //   req
+    // });
     res.status(200).json({
       success: true,
       data: {
@@ -402,14 +402,14 @@ exports.getActionById = async (req, res, next) => {
       return res.status(404).json({ success: false, message: "Action not found" });
     }
 
-    Logger.info("getActionById", "Fetched action", {
-      context: {
-        actionId: id,
-        tenant: req.user.tenant,
-        userId: req.user?._id
-      },
-      req
-    });
+    // Logger.info("getActionById", "Fetched action", {
+    //   context: {
+    //     actionId: id,
+    //     tenant: req.user.tenant,
+    //     userId: req.user?._id
+    //   },
+    //   req
+    // });
     res.status(200).json({ success: true, data: action });
   } catch (err) {
     Logger.error("getActionById", "Error fetching action", {
@@ -491,14 +491,14 @@ exports.updateAction = async (req, res, next) => {
       });
     }
 
-    Logger.info("updateAction", "Action updated", {
-      context: {
-        actionId: req.params.id,
-        tenant: req.user.tenant,
-        userId: req.user?._id
-      },
-      req
-    });
+    // Logger.info("updateAction", "Action updated", {
+    //   context: {
+    //     actionId: req.params.id,
+    //     tenant: req.user.tenant,
+    //     userId: req.user?._id
+    //   },
+    //   req
+    // });
     res.status(200).json({ success: true, message: "Action updated successfully", data: action });
 
   } catch (err) {
@@ -530,14 +530,14 @@ exports.deleteAction = async (req, res, next) => {
     action.deletedBy = req.user._id;
     await action.save();
 
-    Logger.info("deleteAction", "Action soft-deleted", {
-      context: {
-        actionId: req.params.id,
-        tenant: req.user.tenant,
-        userId: req.user._id
-      },
-      req
-    });
+    // Logger.info("deleteAction", "Action soft-deleted", {
+    //   context: {
+    //     actionId: req.params.id,
+    //     tenant: req.user.tenant,
+    //     userId: req.user._id
+    //   },
+    //   req
+    // });
 
     res.status(200).json({ success: true, message: "Action deleted successfully (soft-delete)" });
 
@@ -598,15 +598,15 @@ exports.assignAction = async (req, res, next) => {
       });
     }
 
-    Logger.info("assignAction", "Action assigned", {
-      context: {
-        actionId: req.params.id,
-        tenant: req.user.tenant,
-        userId: req.user._id,
-        assignedTo: action.assignedTo
-      },
-      req
-    });
+    // Logger.info("assignAction", "Action assigned", {
+    //   context: {
+    //     actionId: req.params.id,
+    //     tenant: req.user.tenant,
+    //     userId: req.user._id,
+    //     assignedTo: action.assignedTo
+    //   },
+    //   req
+    // });
     res.status(200).json({ success: true, message: "Action assigned successfully", data: action });
 
   } catch (err) {
@@ -634,15 +634,15 @@ exports.getActionsByPriority = async (req, res, next) => {
       .populate([{ path: "assignedTo", select: "name email avatar" }, { path: "feedback", select: "sentiment category" }])
       .sort({ createdAt: -1 });
 
-    Logger.info("getActionsByPriority", "Fetched actions by priority", {
-      context: {
-        tenant: req.user.tenant,
-        userId: req.user?._id,
-        priority,
-        total: actions.length
-      },
-      req
-    });
+    // Logger.info("getActionsByPriority", "Fetched actions by priority", {
+    //   context: {
+    //     tenant: req.user.tenant,
+    //     userId: req.user?._id,
+    //     priority,
+    //     total: actions.length
+    //   },
+    //   req
+    // });
 
     res.status(200).json({ success: true, data: actions });
 
@@ -670,15 +670,15 @@ exports.getActionsByStatus = async (req, res, next) => {
       .populate([{ path: "assignedTo", select: "name email avatar" }, { path: "feedback", select: "sentiment category" }])
       .sort({ createdAt: -1 });
 
-    Logger.info("getActionsByStatus", "Fetched actions by status", {
-      context: {
-        tenant: req.user.tenant,
-        userId: req.user?._id,
-        status,
-        total: actions.length
-      },
-      req
-    });
+    // Logger.info("getActionsByStatus", "Fetched actions by status", {
+    //   context: {
+    //     tenant: req.user.tenant,
+    //     userId: req.user?._id,
+    //     status,
+    //     total: actions.length
+    //   },
+    //   req
+    // });
     res.status(200).json({ success: true, data: actions });
 
   } catch (err) {
@@ -698,14 +698,14 @@ exports.getActionsAnalytics = async (req, res, next) => {
   try {
     const { period = "30" } = req.query;
     const daysAgo = new Date(); daysAgo.setDate(daysAgo.getDate() - parseInt(period));
-    Logger.info("getActionsAnalytics", "Fetching analytics", {
-      context: {
-        tenant: req.user.tenant,
-        userId: req.user?._id,
-        period
-      },
-      req
-    });
+    // Logger.info("getActionsAnalytics", "Fetching analytics", {
+    //   context: {
+    //     tenant: req.user.tenant,
+    //     userId: req.user?._id,
+    //     period
+    //   },
+    //   req
+    // });
 
     const analytics = await Action.aggregate([
       { $match: { tenant: req.user.tenant, createdAt: { $gte: daysAgo }, isDeleted: false } },
@@ -722,15 +722,15 @@ exports.getActionsAnalytics = async (req, res, next) => {
     ]);
 
     const result = analytics[0] || {};
-    Logger.info("getActionsAnalytics", "Fetched analytics", {
-      context: {
-        tenant: req.user.tenant,
-        stats: {
-          byPriority: result.byPriority?.length || 0
-        }
-      },
-      req
-    });
+    // Logger.info("getActionsAnalytics", "Fetched analytics", {
+    //   context: {
+    //     tenant: req.user.tenant,
+    //     stats: {
+    //       byPriority: result.byPriority?.length || 0
+    //     }
+    //   },
+    //   req
+    // });
 
     res.status(200).json({
       success: true,
@@ -778,14 +778,14 @@ exports.bulkUpdateActions = async (req, res, next) => {
     if (typeof updates.team !== 'undefined') allowedUpdates.team = updates.team;
 
     const result = await Action.updateMany({ _id: { $in: actionIds }, tenant: req.user.tenant }, { $set: allowedUpdates });
-    Logger.info("bulkUpdateActions", "Bulk update completed", {
-      context: {
-        tenant: req.user.tenant,
-        userId: req.user?._id,
-        modifiedCount: result.modifiedCount
-      },
-      req
-    });
+    // Logger.info("bulkUpdateActions", "Bulk update completed", {
+    //   context: {
+    //     tenant: req.user.tenant,
+    //     userId: req.user?._id,
+    //     modifiedCount: result.modifiedCount
+    //   },
+    //   req
+    // });
 
     res.status(200).json({ success: true, message: `${result.modifiedCount} actions updated successfully`, data: { modifiedCount: result.modifiedCount } });
 
@@ -883,14 +883,15 @@ exports.generateActionsFromFeedback = async (req, res, next) => {
         await followUp({ actionIds, messageTemplate: "Your feedback received, we are on it!" });
       }
 
-      Logger.info("generateActionsFromFeedback", "Actions generated", {
-        context: {
-          tenant: req.user.tenant,
-          userId: req.user?._id,
-          createdCount: createdActions.length
-        },
-        req
-      }); res.status(200).json({ success: true, message: `${createdActions.length} actions generated`, data: { actions: createdActions, feedbackProcessed: feedbacks.length } });
+      // Logger.info("generateActionsFromFeedback", "Actions generated", {
+      //   context: {
+      //     tenant: req.user.tenant,
+      //     userId: req.user?._id,
+      //     createdCount: createdActions.length
+      //   },
+      //   req
+      // });
+       res.status(200).json({ success: true, message: `${createdActions.length} actions generated`, data: { actions: createdActions, feedbackProcessed: feedbacks.length } });
 
     } catch (aiError) {
       // Fallback logic already handled above; return error if catastrophic

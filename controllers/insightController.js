@@ -9,14 +9,14 @@ const getPredictiveInsights = async (req, res) => {
     const sentimentHeatmap = await generateSentimentHeatmap(surveyId);
     const trendline = await generateTrendline(surveyId);
 
-    Logger.info("getPredictiveInsights", "Insights generated successfully", {
-      context: {
-        surveyId,
-        npsScore: nps?.score,
-        sentimentCount: sentimentHeatmap?.length || 0
-      },
-      req
-    });
+    // Logger.info("getPredictiveInsights", "Insights generated successfully", {
+    //   context: {
+    //     surveyId,
+    //     npsScore: nps?.score,
+    //     sentimentCount: sentimentHeatmap?.length || 0
+    //   },
+    //   req
+    // });
 
     res.json({ nps, sentimentHeatmap, trendline });
   } catch (err) {

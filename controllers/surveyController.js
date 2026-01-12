@@ -400,12 +400,6 @@ const notifyManagersOfUrgentAction = async (action, tenantId) => {
             priority: action.priority,
             tenantId
         });
-
-        console.log(`🚨 URGENT ACTION ALERT: ${action.title}`);
-        console.log(`Department: ${action.department}`);
-        console.log(`Due: ${action.dueDate}`);
-        console.log(`Priority: ${action.priority}`);
-
         // Placeholder for real notification integrations
         // Email, SMS, Push, In-app notifications
 
@@ -1235,7 +1229,6 @@ exports.getSurveyResponses = async (req, res, next) => {
             stats
         });
 
-        console.log(stats, transformedResponses);
 
         res.status(200).json({
             total,
@@ -1533,11 +1526,8 @@ exports.autoPublishScheduledSurveys = async () => {
         }).lean(); // .lean() for faster processing
 
         if (scheduledSurveys.length === 0) {
-            console.log("No surveys to auto-publish at this time.");
             return;
         }
-
-        console.log(`Found ${scheduledSurveys.length} survey(s) to auto-publish`);
 
         for (const survey of scheduledSurveys) {
             try {
@@ -1587,8 +1577,7 @@ exports.autoPublishScheduledSurveys = async () => {
                     recipientsCount: recipients.length
                 });
 
-                console.log(`Auto-published: ${updatedSurvey.title} (${recipients.length} recipients)`);
-
+              
             } catch (surveyError) {
                 console.error(`Failed to publish survey ${survey._id}:`, surveyError);
                 await Logger.error("Single survey auto-publish failed", {
@@ -1597,8 +1586,6 @@ exports.autoPublishScheduledSurveys = async () => {
                 });
             }
         }
-
-        console.log(`Cron job completed: ${scheduledSurveys.length} surveys processed.`);
 
     } catch (err) {
         console.error("CRON autoPublishScheduledSurveys FAILED:", err);

@@ -696,15 +696,11 @@ exports.updateSubscription = async (req, res, next) => {
 // COMPANY ADMIN: Activate subscription (DEBUG VERSION)
 exports.activateSubscription = async (req, res, next) => {
   try {
-    console.log("🚀 Activating subscription for tenant:", req.user.tenant);
-    console.log("📝 Request body:", req.body);
 
     const { planId, pland, paymentDetails } = req.body; // dono check karo
 
     // Check for typo 'pland' and use 'planId'
     const actualPlanId = planId || pland;
-
-    console.log("🔍 Plan ID from request:", actualPlanId);
 
     if (!actualPlanId) {
       return res.status(400).json({
@@ -730,8 +726,6 @@ exports.activateSubscription = async (req, res, next) => {
     });
 
     if (!planTemplate) {
-      console.log("❌ Plan template not found or inactive:", actualPlanId);
-
       // Check if plan exists but inactive
       const inactivePlan = await Subscription.findOne({
         _id: actualPlanId,
@@ -751,8 +745,6 @@ exports.activateSubscription = async (req, res, next) => {
       });
     }
 
-    console.log("✅ Plan template found:", planTemplate.name);
-
     // Check if tenant already has an active subscription
     const existingSubscription = await Subscription.findOne({
       tenant: req.user.tenant,
@@ -761,7 +753,6 @@ exports.activateSubscription = async (req, res, next) => {
     });
 
     if (existingSubscription) {
-      console.log("❌ Subscription already exists:", existingSubscription._id);
       return res.status(400).json({
         success: false,
         message: "Tenant already has an active subscription",
@@ -777,8 +768,6 @@ exports.activateSubscription = async (req, res, next) => {
     } else if (planTemplate.billingCycle === "yearly") {
       endDate.setFullYear(endDate.getFullYear() + 1);
     }
-
-    console.log("📅 Subscription dates:", { startDate, endDate });
 
     // Create tenant subscription
     const tenantSubscription = await Subscription.create({
@@ -804,12 +793,6 @@ exports.activateSubscription = async (req, res, next) => {
       activatedBy: req.user._id,
       activatedAt: startDate,
     });
-
-    console.log(
-      "✅ Subscription created successfully:",
-      tenantSubscription._id
-    );
-
     const populatedSubscription = await Subscription.findById(
       tenantSubscription._id
     )

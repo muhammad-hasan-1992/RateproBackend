@@ -239,16 +239,16 @@ exports.aiDraftSurvey = async (req, res, next) => {
       };
     }
 
-    Logger.info("aiDraftSurvey", "AI survey draft generated successfully", {
-      context: {
-        userId: req.user?._id,
-        tenant: req.user.tenant,
-        type: surveyType,
-        language,
-        questionCount: adjustedQuestionCount
-      },
-      req
-    });
+    // Logger.info("aiDraftSurvey", "AI survey draft generated successfully", {
+    //   context: {
+    //     userId: req.user?._id,
+    //     tenant: req.user.tenant,
+    //     type: surveyType,
+    //     language,
+    //     questionCount: adjustedQuestionCount
+    //   },
+    //   req
+    // });
 
     res.status(200).json({ draft: suggestion });
   } catch (err) {
@@ -332,14 +332,14 @@ exports.aiSuggestQuestion = async (req, res, next) => {
     }
 
     // Log success if AI generation worked
-    Logger.info("aiSuggestQuestion", "AI suggested survey questions", {
-      context: {
-        tenantId: tenant,
-        userId: req.user?._id,
-        suggestionCount: suggestions.length
-      },
-      req
-    });
+    // Logger.info("aiSuggestQuestion", "AI suggested survey questions", {
+    //   context: {
+    //     tenantId: tenant,
+    //     userId: req.user?._id,
+    //     suggestionCount: suggestions.length
+    //   },
+    //   req
+    // });
     // Respond with success
     return res.status(200).json({
       success: true,
@@ -425,15 +425,15 @@ exports.aiOptimizeSurvey = async (req, res, next) => {
     }
 
     // ✅ Log success event
-    Logger.info("aiOptimizeSurvey", "AI optimized survey successfully", {
-      context: {
-        tenantId: tenant,
-        userId: req.user?._id,
-        surveyId,
-        optimizedKeys: Object.keys(optimized)
-      },
-      req
-    });
+    // Logger.info("aiOptimizeSurvey", "AI optimized survey successfully", {
+    //   context: {
+    //     tenantId: tenant,
+    //     userId: req.user?._id,
+    //     surveyId,
+    //     optimizedKeys: Object.keys(optimized)
+    //   },
+    //   req
+    // });
     // ✅ Respond success
     return res.status(200).json({
       success: true,
@@ -867,15 +867,15 @@ Return JSON with logic suggestions.
     }
 
     // ✅ Log success only on 200
-    Logger.info("aiSuggestLogic", "AI suggested logic successfully", {
-      context: {
-        tenantId: tenant,
-        userId: req.user?._id,
-        totalQuestions: questions?.length || 0,
-        hasFollowUps: logicSuggestions?.followUps?.length > 0
-      },
-      req
-    });
+    // Logger.info("aiSuggestLogic", "AI suggested logic successfully", {
+    //   context: {
+    //     tenantId: tenant,
+    //     userId: req.user?._id,
+    //     totalQuestions: questions?.length || 0,
+    //     hasFollowUps: logicSuggestions?.followUps?.length > 0
+    //   },
+    //   req
+    // });
     return res.status(200).json({
       success: true,
       message: "Logic suggestions generated successfully",
@@ -947,16 +947,16 @@ Return JSON with content sections.
     }
 
     // ✅ Log success only on 200
-    Logger.info("aiGenerateThankYouPage", "AI generated thank you page successfully", {
-      context: {
-        tenantId: tenant,
-        userId: req.user?._id,
-        surveyType,
-        includeIncentives,
-        tone
-      },
-      req
-    });
+    // Logger.info("aiGenerateThankYouPage", "AI generated thank you page successfully", {
+    //   context: {
+    //     tenantId: tenant,
+    //     userId: req.user?._id,
+    //     surveyType,
+    //     includeIncentives,
+    //     tone
+    //   },
+    //   req
+    // });
 
     return res.status(200).json({
       success: true,
@@ -1034,15 +1034,15 @@ Return structured JSON analysis.
     }
 
     // ✅ Log only when successful (200)
-    Logger.info("aiAnalyzeFeedback", "AI analyzed feedback successfully", {
-      context: {
-        tenantId: tenant,
-        userId: req.user?._id,
-        surveyTitle,
-        responseCount: responses.length
-      },
-      req
-    });
+    // Logger.info("aiAnalyzeFeedback", "AI analyzed feedback successfully", {
+    //   context: {
+    //     tenantId: tenant,
+    //     userId: req.user?._id,
+    //     surveyTitle,
+    //     responseCount: responses.length
+    //   },
+    //   req
+    // });
 
     return res.status(200).json({
       success: true,
@@ -1130,15 +1130,15 @@ Return JSON with structured insights.
     }
 
     // ✅ Log only if success (status 200)
-    Logger.info("aiGenerateInsights", "AI-generated business insights successfully", {
-      context: {
-        tenantId: tenant,
-        userId: req.user?._id,
-        timeframe,
-        goals: companyGoals
-      },
-      req
-    });
+    // Logger.info("aiGenerateInsights", "AI-generated business insights successfully", {
+    //   context: {
+    //     tenantId: tenant,
+    //     userId: req.user?._id,
+    //     timeframe,
+    //     goals: companyGoals
+    //   },
+    //   req
+    // });
 
     return res.status(200).json({
       success: true,

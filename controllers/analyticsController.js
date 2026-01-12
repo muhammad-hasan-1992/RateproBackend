@@ -15,15 +15,15 @@ exports.getSurveyStats = async (req, res) => {
     const totalResponses = await SurveyResponse.countDocuments({ survey: surveyId });
 
     // ✅ Log success (status 200)
-    Logger.info("getSurveyStats", "Survey stats fetched successfully", {
-      context: {
-        tenantId: tenant,
-        userId: req.user?._id,
-        surveyId,
-        totalResponses
-      },
-      req
-    });
+    // Logger.info("getSurveyStats", "Survey stats fetched successfully", {
+    //   context: {
+    //     tenantId: tenant,
+    //     userId: req.user?._id,
+    //     surveyId,
+    //     totalResponses
+    //   },
+    //   req
+    // });
 
     return res.status(200).json({
       success: true,
@@ -62,15 +62,15 @@ exports.getTenantStats = async (req, res) => {
     const totalResponses = await SurveyResponse.countDocuments({ survey: { $in: surveyIds } });
 
     // ✅ Log on success (status 200)
-    Logger.info("getTenantStats", "Tenant stats fetched successfully", {
-      context: {
-        tenantId,
-        userId,
-        totalSurveys,
-        totalResponses
-      },
-      req
-    });
+    // Logger.info("getTenantStats", "Tenant stats fetched successfully", {
+    //   context: {
+    //     tenantId,
+    //     userId,
+    //     totalSurveys,
+    //     totalResponses
+    //   },
+    //   req
+    // });
 
     return res.status(200).json({
       success: true,
@@ -121,16 +121,16 @@ exports.getExecutiveDashboard = asyncHandler(async (req, res) => {
     };
 
     // ✅ Log on success (status 200)
-    Logger.info("getExecutiveDashboard", "Executive dashboard data fetched successfully", {
-      context: {
-        tenantId,
-        userId,
-        range,
-        days,
-        dashboardData
-      },
-      req
-    });
+    // Logger.info("getExecutiveDashboard", "Executive dashboard data fetched successfully", {
+    //   context: {
+    //     tenantId,
+    //     userId,
+    //     range,
+    //     days,
+    //     dashboardData
+    //   },
+    //   req
+    // });
 
     return res.status(200).json({
       success: true,
@@ -182,16 +182,16 @@ exports.getOperationalDashboard = asyncHandler(async (req, res) => {
     };
 
     // ✅ Log only on success (status 200)
-    Logger.info("getOperationalDashboard", "Operational dashboard data fetched successfully", {
-      context: {
-        tenantId,
-        userId,
-        range,
-        days,
-        dashboardData
-      },
-      req
-    });
+    // Logger.info("getOperationalDashboard", "Operational dashboard data fetched successfully", {
+    //   context: {
+    //     tenantId,
+    //     userId,
+    //     range,
+    //     days,
+    //     dashboardData
+    //   },
+    //   req
+    // });
 
     return res.status(200).json({
       success: true,
@@ -239,16 +239,16 @@ exports.getTrendsAnalytics = asyncHandler(async (req, res) => {
     };
 
     // ✅ Log only on success (status 200)
-    Logger.info("getTrendsAnalytics", "Trends analytics fetched successfully", {
-      context: {
-        tenantId,
-        userId,
-        range,
-        days,
-        analyticsData
-      },
-      req
-    });
+    // Logger.info("getTrendsAnalytics", "Trends analytics fetched successfully", {
+    //   context: {
+    //     tenantId,
+    //     userId,
+    //     range,
+    //     days,
+    //     analyticsData
+    //   },
+    //   req
+    // });
 
     return res.status(200).json({
       success: true,
@@ -298,16 +298,16 @@ exports.getAlerts = asyncHandler(async (req, res) => {
     const alerts = await generateSmartAlerts(recentActions, recentResponses, tenantId);
 
     // ✅ Log only on success (status 200)
-    Logger.info("getAlerts", "Alerts fetched successfully", {
-      context: {
-        tenantId,
-        userId,
-        recentActionsCount: recentActions.length,
-        recentResponsesCount: recentResponses.length,
-        alertsCount: alerts?.length || 0
-      },
-      req
-    });
+    // Logger.info("getAlerts", "Alerts fetched successfully", {
+    //   context: {
+    //     tenantId,
+    //     userId,
+    //     recentActionsCount: recentActions.length,
+    //     recentResponsesCount: recentResponses.length,
+    //     alertsCount: alerts?.length || 0
+    //   },
+    //   req
+    // });
 
     return res.status(200).json({
       success: true,
@@ -415,16 +415,16 @@ exports.calculateCustomerSatisfactionIndex = async (tenantId, startDate) => {
     };
 
     // ✅ Log success
-    Logger.info("calculateCustomerSatisfactionIndex", "CSI calculated successfully", {
-      context: {
-        tenantId,
-        startDate,
-        overall: result.overall,
-        totalLocations: result.locations.length,
-        totalServices: result.services.length
-      },
-      req
-    });
+    // Logger.info("calculateCustomerSatisfactionIndex", "CSI calculated successfully", {
+    //   context: {
+    //     tenantId,
+    //     startDate,
+    //     overall: result.overall,
+    //     totalLocations: result.locations.length,
+    //     totalServices: result.services.length
+    //   },
+    //   req
+    // });
 
     return result;
 
@@ -505,17 +505,17 @@ exports.calculateNPSScore = async (tenantId, startDate) => {
     }
 
     // ✅ Log success
-    Logger.info("calculateNPSScore", "NPS calculated successfully", {
-      context: {
-        tenantId,
-        startDate,
-        current: result.current,
-        promoters: result.promoters,
-        passives: result.passives,
-        detractors: result.detractors
-      },
-      req
-    });
+    // Logger.info("calculateNPSScore", "NPS calculated successfully", {
+    //   context: {
+    //     tenantId,
+    //     startDate,
+    //     current: result.current,
+    //     promoters: result.promoters,
+    //     passives: result.passives,
+    //     detractors: result.detractors
+    //   },
+    //   req
+    // });
 
     return result;
 
@@ -561,16 +561,16 @@ exports.calculateResponseRate = async (tenantId, startDate) => {
     };
 
     // ✅ Log success
-    Logger.info("calculateResponseRate", "Response rate calculated successfully", {
-      context: {
-        tenantId,
-        startDate,
-        current: result.current,
-        completed: result.completed,
-        total: result.total
-      },
-      req
-    });
+    // Logger.info("calculateResponseRate", "Response rate calculated successfully", {
+    //   context: {
+    //     tenantId,
+    //     startDate,
+    //     current: result.current,
+    //     completed: result.completed,
+    //     total: result.total
+    //   },
+    //   req
+    // });
 
     return result;
   } catch (error) {
@@ -604,13 +604,13 @@ exports.calculateAlertCounts = async (tenantId) => {
     });
 
     // ✅ Log success
-    Logger.info("calculateAlertCounts", "Alert counts calculated successfully", {
-      context: {
-        tenantId,
-        counts
-      },
-      req
-    });
+    // Logger.info("calculateAlertCounts", "Alert counts calculated successfully", {
+    //   context: {
+    //     tenantId,
+    //     counts
+    //   },
+    //   req
+    // });
 
     return counts;
   } catch (error) {
@@ -636,13 +636,13 @@ exports.calculateSLAMetrics = async (tenantId, startDate) => {
       const data = { averageResponseTime: "2.4 hours", onTimeResolution: 87, overdueActions: 0 };
 
       // ✅ Log success
-      Logger.info("calculateSLAMetrics", "SLA metrics calculated successfully", {
-        context: {
-          tenantId,
-          data
-        },
-        req
-      });
+      // Logger.info("calculateSLAMetrics", "SLA metrics calculated successfully", {
+      //   context: {
+      //     tenantId,
+      //     data
+      //   },
+      //   req
+      // });
 
       return data;
     }
@@ -671,13 +671,13 @@ exports.calculateSLAMetrics = async (tenantId, startDate) => {
     };
 
     // ✅ Log success
-    Logger.info("calculateSLAMetrics", "SLA metrics calculated successfully", {
-      context: {
-        tenantId,
-        result // ya data — dono mein se jo actual variable ho, yahan 'result' rakha assuming latest
-      },
-      req
-    });
+    // Logger.info("calculateSLAMetrics", "SLA metrics calculated successfully", {
+    //   context: {
+    //     tenantId,
+    //     result // ya data — dono mein se jo actual variable ho, yahan 'result' rakha assuming latest
+    //   },
+    //   req
+    // });
     return result;
   } catch (error) {
     // ❌ Log error

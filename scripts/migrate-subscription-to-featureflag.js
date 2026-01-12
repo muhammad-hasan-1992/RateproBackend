@@ -11,8 +11,6 @@ async function runMigration() {
       serverSelectionTimeoutMS: 5000
     });
 
-    console.log("✅ Connected to DB");
-
     // 2) Actual migration logic
     const subscriptions = await Subscription.find({ isTemplate: false });
 
@@ -45,10 +43,8 @@ async function runMigration() {
       });
     }
 
-    console.log("🎉 Migration Complete!");
     process.exit(0);
   } catch (err) {
-    console.error("❌ Migration Error:", err);
     process.exit(1);
   }
 }

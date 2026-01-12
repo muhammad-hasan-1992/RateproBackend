@@ -26,12 +26,10 @@ const setTenantId = (req, res, next) => {
   }
   
   if (!req.user.tenant) {
-    // console.log('setTenantId: No tenant found for user', { userId: req.user._id });
     return res.status(403).json({ message: 'Access denied: No tenant associated with this user' });
   }
 
   req.tenantId = req.user.tenant._id ? req.user.tenant._id.toString() : req.user.tenant.toString();
-  // console.log('setTenantId: Set tenantId', { tenantId: req.tenantId });
   next();
 };
 

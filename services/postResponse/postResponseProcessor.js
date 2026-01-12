@@ -7,6 +7,7 @@
  * - No manual action required from administrators
  * - Every submitted response treated as a business signal
  */
+const mongoose = require("mongoose"); 
 const analyticsService = require("../analytics/analyticsService");
 const aiInsightService = require("../ai/aiInsightService");
 const autoActionService = require("../actions/autoActionService");
@@ -85,7 +86,7 @@ exports.processPostSurveyResponse = async ({
     console.log(`   NPS Category: ${metrics.npsCategory || 'N/A'}`);
     console.log(`   Rating Category: ${metrics.ratingCategory || 'N/A'}`);
 
-    // ============================================================
+    // =================================================
     // STEP 4: ENRICH RESPONSE WITH ANALYSIS METADATA
     // Client Requirement 2: Enrich response with analytical metadata
     // ============================================================
@@ -165,22 +166,77 @@ exports.processPostSurveyResponse = async ({
     }
 
     // ============================================================
-    // CHECK FOR REPEATED COMPLAINT PATTERNS
-    // Client Requirement 5: Repeated complaint themes generating alerts
+    // STEP 7: INCENTIVE ELIGIBILITY CHECK
+    // Client Requirement 7: Rules-Based Reward Engine
     // ============================================================
-    console.log(`\n🔍 Checking for repeated complaint patterns...`);
+    console.log(`\n🎁 [Step 7/7] Checking incentive eligibility...`);
+    try {
+      const incentiveResult = await checkIncentiveEligibility({
+        response,
+        survey,
+        tenantId,
+        insight: combinedInsight,
+        metrics
+      });
+      
+      if (incentiveResult.eligible) {
+        console.log(`   🎉 Eligible for: ${incentiveResult.rewards.join(', ')}`);
+      } else {
+        console.log(`   ℹ️ No incentives applicable`);
+      }
+    } catch (incentiveErr) {
+      console.error(`   ⚠️ Incentive check failed (non-blocking):`, incentiveErr.message);
+    }
+
+    // ============================================================
+    // CHECK FOR REPEATED COMPLAINT PATTERNS & SPIKES
+    // Client Requirement 5 & 8.2: Repeated complaints + Alert on rating drop
+    // ============================================================
+    console.log(`\n🔍 Checking for repeated complaint patterns & spikes...`);
+    
+    // Check repeated complaints
     const repeatedAlerts = await autoActionService.checkRepeatedComplaints(tenantId, {
       hours: 24,
       threshold: 3
     });
+    
     if (repeatedAlerts.length > 0) {
       console.log(`   ⚠️ Found ${repeatedAlerts.length} repeated complaint patterns`);
       repeatedAlerts.forEach(alert => {
         console.log(`   - ${alert.category}: ${alert.count} issues (${alert.severity})`);
       });
-      // Could trigger additional notifications here
+      
+      // Create alert notification for spikes
+      // Client Requirement 8.2: Notify manager on spikes
+      for (const alert of repeatedAlerts) {
+        if (alert.severity === "critical") {
+          await notificationService.notifyTenantAdmins({
+            tenantId,
+            title: `🚨 Spike Alert: ${alert.category}`,
+            message: alert.message,
+            type: "alert",
+            priority: "urgent",
+            metadata: { alertType: "spike", ...alert }
+          });
+        }
+      }
     } else {
       console.log(`   ✅ No repeated complaint patterns detected`);
+    }
+
+    // ✅ NEW: Check for rating drop compared to baseline
+    // Client Requirement 8.2: Alert on rating drop
+    const ratingDropCheck = await checkRatingDrop(survey._id, tenantId, metrics);
+    if (ratingDropCheck.isSignificantDrop) {
+      console.log(`   ⚠️ Rating drop detected: ${ratingDropCheck.dropPercent}% below baseline`);
+      await notificationService.notifyTenantAdmins({
+        tenantId,
+        title: `📉 Rating Drop Alert: ${survey.title}`,
+        message: `Survey average rating dropped ${ratingDropCheck.dropPercent}% compared to last 7 days`,
+        type: "alert",
+        priority: "high",
+        metadata: { alertType: "rating_drop", ...ratingDropCheck }
+      });
     }
 
     console.log(`\n${'─'.repeat(60)}`);
@@ -409,23 +465,155 @@ function parseAnswerValue(answer) {
  */
 async function enrichResponseWithMetadata(responseId, insight, metrics) {
   try {
-    await SurveyResponse.findByIdAndUpdate(responseId, {
-      $set: {
-        "analysis.sentiment": insight.sentiment,
-        "analysis.sentimentScore": insight.sentimentScore,
-        "analysis.urgency": insight.urgency,
-        "analysis.emotions": insight.emotions || [],
-        "analysis.keywords": insight.keywords || [],
-        "analysis.themes": insight.themes || [],
-        "analysis.classification": insight.classification || {},
-        "analysis.summary": insight.summary,
-        "analysis.npsCategory": metrics.npsCategory,
-        "analysis.ratingCategory": metrics.ratingCategory,
-        "analysis.analyzedAt": new Date()
-      }
-    });
+    const updateFields = {
+      // Analysis subdocument
+      "analysis.sentiment": insight.sentiment,
+      "analysis.sentimentScore": insight.sentimentScore,
+      "analysis.urgency": insight.urgency,
+      "analysis.emotions": insight.emotions || [],
+      "analysis.keywords": insight.keywords || [],
+      "analysis.themes": insight.themes || [],
+      "analysis.classification": insight.classification || {},
+      "analysis.summary": insight.summary,
+      "analysis.npsCategory": metrics.npsCategory,
+      "analysis.ratingCategory": metrics.ratingCategory,
+      "analysis.analyzedAt": new Date()
+    };
+
+    // ✅ FIX: Also update top-level rating/score if extracted from answers
+    // This ensures queries on response.rating and response.score work correctly
+    if (metrics.rating !== null && metrics.rating !== undefined) {
+      updateFields.rating = metrics.rating;
+    }
+    if (metrics.npsScore !== null && metrics.npsScore !== undefined) {
+      updateFields.score = metrics.npsScore;
+    }
+
+    await SurveyResponse.findByIdAndUpdate(responseId, { $set: updateFields });
   } catch (error) {
     console.error(`   ⚠️ Failed to enrich response metadata:`, error.message);
     // Non-fatal error, continue processing
+  }
+}
+
+/**
+ * Check incentive eligibility based on response
+ * Client Requirement 7: Rules-Based Reward Engine
+ */
+async function checkIncentiveEligibility({ response, survey, tenantId, insight, metrics }) {
+  const rewards = [];
+  
+  // Rule: Completed survey
+  rewards.push("survey_completion_points");
+  
+  // Rule: NPS Promoter (score 9-10)
+  if (metrics.npsScore !== null && metrics.npsScore >= 9) {
+    rewards.push("promoter_bonus");
+  }
+  
+  // Rule: High rating (4-5)
+  if (metrics.rating !== null && metrics.rating >= 4) {
+    rewards.push("high_rating_reward");
+  }
+  
+  // Rule: Valuable detailed comment (length > 100 chars)
+  const reviewLength = response.review?.length || 0;
+  const hasDetailedFeedback = reviewLength > 100 || 
+    (insight.keywords?.length >= 5) ||
+    (insight.themes?.length >= 3);
+  
+  if (hasDetailedFeedback) {
+    rewards.push("detailed_feedback_bonus");
+  }
+  
+  // TODO: Check first-time respondent (requires Contact lookup)
+  // TODO: Check 5-survey streak (requires response history)
+  
+  // For now, just log - actual reward creation would be a separate service
+  if (rewards.length > 0) {
+    Logger.info("incentive", "Incentive eligibility checked", {
+      context: {
+        responseId: response._id,
+        tenantId,
+        rewards,
+        eligible: true
+      }
+    });
+  }
+  
+  return {
+    eligible: rewards.length > 0,
+    rewards
+  };
+}
+
+/**
+ * Check if current response indicates a rating drop trend
+ * Client Requirement 8.2: Alert on rating drop
+ */
+async function checkRatingDrop(surveyId, tenantId, currentMetrics) {
+  try {
+    if (!currentMetrics.rating && !currentMetrics.npsScore) {
+      return { isSignificantDrop: false };
+    }
+
+    // Get average from last 7 days
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    
+    const baseline = await SurveyResponse.aggregate([
+      {
+        $match: {
+          survey: new mongoose.Types.ObjectId(surveyId),
+          tenant: new mongoose.Types.ObjectId(tenantId),
+          createdAt: { $gte: sevenDaysAgo },
+          $or: [
+            { rating: { $exists: true, $ne: null } },
+            { score: { $exists: true, $ne: null } }
+          ]
+        }
+      },
+      {
+        $group: {
+          _id: null,
+          avgRating: { $avg: "$rating" },
+          avgNPS: { $avg: "$score" },
+          count: { $sum: 1 }
+        }
+      }
+    ]);
+
+    if (!baseline.length || baseline[0].count < 5) {
+      // Not enough data for comparison
+      console.log(`   ℹ️ Rating drop check: Insufficient data (${baseline[0]?.count || 0} responses)`);
+      return { isSignificantDrop: false, reason: "insufficient_data" };
+    }
+
+    const baselineData = baseline[0];
+    let dropPercent = 0;
+    let isSignificantDrop = false;
+
+    // Check rating drop (20% threshold)
+    if (currentMetrics.rating && baselineData.avgRating) {
+      dropPercent = ((baselineData.avgRating - currentMetrics.rating) / baselineData.avgRating) * 100;
+      isSignificantDrop = dropPercent >= 20;
+    }
+
+    // Check NPS drop (30% threshold for NPS since it's more volatile)
+    if (!isSignificantDrop && currentMetrics.npsScore !== null && baselineData.avgNPS) {
+      dropPercent = ((baselineData.avgNPS - currentMetrics.npsScore) / Math.max(baselineData.avgNPS, 1)) * 100;
+      isSignificantDrop = dropPercent >= 30;
+    }
+
+    console.log(`   📉 Rating drop check: ${isSignificantDrop ? 'DROP DETECTED' : 'Normal'} (${Math.round(dropPercent)}% vs baseline)`);
+
+    return {
+      isSignificantDrop,
+      dropPercent: Math.round(dropPercent),
+      baseline: baselineData,
+      current: currentMetrics
+    };
+  } catch (err) {
+    console.error(`   ⚠️ Rating drop check failed:`, err.message);
+    return { isSignificantDrop: false, error: err.message };
   }
 }

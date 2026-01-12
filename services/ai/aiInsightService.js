@@ -52,15 +52,24 @@ Analyze customer feedback and return JSON only (no markdown):
 
 {
   "sentiment": "positive|neutral|negative",
+  "sentimentScore": number (-1 to 1),
   "urgency": "low|medium|high",
   "shouldGenerateAction": boolean,
-  "summary": "short issue summary"
+  "summary": "short issue summary",
+  "emotions": ["frustration", "appreciation", etc],
+  "keywords": ["keyword1", "keyword2"],
+  "themes": ["theme1", "theme2"],
+  "classification": {
+    "isComplaint": boolean,
+    "isPraise": boolean,
+    "isSuggestion": boolean
+  }
 }
 
 Feedback:
 "${text}"
     `,
-    maxTokens: 200
+    maxTokens: 400
   });
 
   try {

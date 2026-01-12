@@ -12,6 +12,7 @@ const retagInactiveContacts = require("./jobs/retagInactiveContacts.job.js");
 const { syncSystemSegments } = require("./crons/systemSegments.cron.js");
 const { autoCloseSurveys } = require("./crons/autoCloseSurveys.cron.js"); 
 const { recomputeAudienceIntelligence } = require("./jobs/audience/recomputeAudienceIntelligence.job");
+const { enableNotificationsForAllTenants } = require("./scripts/enableNotifications.js");
 
 // Event listeners for response processing pipeline
 require("./workers/responseProcessor.worker");
@@ -21,6 +22,7 @@ require("./utils/events/contactSyncListeners");
 const startServer = async () => {
   try {
     await connectDB();
+    enableNotificationsForAllTenants();
   } catch (err) {
     console.error("Server startup error:", err);
     process.exit(1);
@@ -104,6 +106,9 @@ app.use("/api/distribution", require("./routes/distributionRoutes"));
 
 app.use("/api/tickets", require("./routes/ticketRoutes"));
 app.use("/api/email-templates", require("./routes/emailTemplateRoutes"));
+
+// 🔥 NEW: Notification routes
+app.use("/api/notifications", require("./routes/notificationRoutes"));
 
 app.use("/api/contacts", require("./routes/contactManagementRoutes"));
 app.use("/api/logic-engine", require("./routes/logicEngineRoutes"));

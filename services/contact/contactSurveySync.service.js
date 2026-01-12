@@ -61,64 +61,69 @@ async function onSurveyResponse({
     }
 
     // Initialize surveyStats if not present
-    if (!contact.surveyStats) {
-      contact.surveyStats = {
-        invitedCount: 0,
-        respondedCount: 0,
-      };
-    }
+    const surveyStats = contact.surveyStats || {
+      invitedCount: 0,
+      respondedCount: 0,
+    };
 
-    const prevRespondedCount = contact.surveyStats.respondedCount || 0;
+    const prevRespondedCount = surveyStats.respondedCount || 0;
 
     // Increment response count
-    contact.surveyStats.respondedCount = prevRespondedCount + 1;
+    surveyStats.respondedCount = prevRespondedCount + 1;
 
     // Update last response date
-    contact.surveyStats.lastResponseDate = responseDate;
+    surveyStats.lastResponseDate = responseDate;
 
     // Update NPS if provided (score is 0-10 scale)
     if (npsScore !== undefined && npsScore !== null) {
-      const prevAvg = contact.surveyStats.avgNpsScore;
+      const prevAvg = surveyStats.avgNpsScore;
       
-      contact.surveyStats.latestNpsScore = npsScore;
-      contact.surveyStats.npsCategory = getNpsCategory(npsScore);
+      surveyStats.latestNpsScore = npsScore;
+      surveyStats.npsCategory = getNpsCategory(npsScore);
 
       // Recalculate average NPS
       if (prevAvg !== undefined && prevAvg !== null && prevRespondedCount > 0) {
-        contact.surveyStats.avgNpsScore =
-          (prevAvg * prevRespondedCount + npsScore) / contact.surveyStats.respondedCount;
+        surveyStats.avgNpsScore =
+          (prevAvg * prevRespondedCount + npsScore) / surveyStats.respondedCount;
       } else {
-        contact.surveyStats.avgNpsScore = npsScore;
+        surveyStats.avgNpsScore = npsScore;
       }
     }
 
     // Update rating if provided (rating is 1-5 scale)
     if (rating !== undefined && rating !== null) {
-      const prevAvg = contact.surveyStats.avgRating;
+      const prevAvg = surveyStats.avgRating;
 
-      contact.surveyStats.latestRating = rating;
+      surveyStats.latestRating = rating;
 
       // Recalculate average rating
       if (prevAvg !== undefined && prevAvg !== null && prevRespondedCount > 0) {
-        contact.surveyStats.avgRating =
-          (prevAvg * prevRespondedCount + rating) / contact.surveyStats.respondedCount;
+        surveyStats.avgRating =
+          (prevAvg * prevRespondedCount + rating) / surveyStats.respondedCount;
       } else {
-        contact.surveyStats.avgRating = rating;
+        surveyStats.avgRating = rating;
       }
     }
 
-    // Update last activity
-    contact.lastActivity = responseDate;
-
-    await contact.save();
+    // ✅ FIX: Use updateOne to bypass contactCategories validation
+    // This is needed for legacy contacts that may have empty categories
+    await Contact.updateOne(
+      { _id: contact._id },
+      {
+        $set: {
+          surveyStats: contact.surveyStats,
+          lastActivity: contact.lastActivity
+        }
+      }
+    );
 
     Logger.info("contactSurveySync", "Contact survey stats updated (response)", {
       context: {
         contactId: contact._id,
         email,
-        respondedCount: contact.surveyStats.respondedCount,
+        respondedCount: surveyStats.respondedCount,
         npsScore,
-        npsCategory: contact.surveyStats.npsCategory,
+        npsCategory: surveyStats.npsCategory,
       },
     });
 
@@ -153,27 +158,30 @@ async function onSurveyInvite({
       return null;
     }
 
-    // Initialize surveyStats if not present
-    if (!contact.surveyStats) {
-      contact.surveyStats = {
-        invitedCount: 0,
-        respondedCount: 0,
-      };
-    }
+    // Build update object
+    const surveyStats = contact.surveyStats || {
+      invitedCount: 0,
+      respondedCount: 0,
+    };
 
-    // Increment invited count
-    contact.surveyStats.invitedCount = (contact.surveyStats.invitedCount || 0) + 1;
+    surveyStats.invitedCount = (surveyStats.invitedCount || 0) + 1;
+    surveyStats.lastInvitedDate = invitedDate;
 
-    // Update last invited date
-    contact.surveyStats.lastInvitedDate = invitedDate;
-
-    await contact.save();
+    // ✅ FIX: Use updateOne to bypass contactCategories validation
+    await Contact.updateOne(
+      { _id: contact._id },
+      {
+        $set: {
+          surveyStats: surveyStats
+        }
+      }
+    );
 
     Logger.info("contactSurveySync", "Contact survey stats updated (invite)", {
       context: {
         contactId: contact._id,
         email,
-        invitedCount: contact.surveyStats.invitedCount,
+        invitedCount: surveyStats.invitedCount,
       },
     });
 
@@ -298,7 +306,17 @@ async function recalculateContactStats({ tenantId, contactId }) {
       npsCategory: getNpsCategory(stats.latestNps),
     };
 
-    await contact.save();
+    // ✅ FIX: Use updateOne to bypass contactCategories validation
+    // This is needed for legacy contacts that may have empty categories
+    await Contact.updateOne(
+      { _id: contact._id },
+      {
+        $set: {
+          surveyStats: contact.surveyStats,
+          lastActivity: contact.lastActivity
+        }
+      }
+    );
 
     Logger.info("contactSurveySync", "Contact stats recalculated", {
       context: { contactId, surveyStats: contact.surveyStats },

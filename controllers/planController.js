@@ -20,13 +20,13 @@ exports.createPlan = async (req, res) => {
       isActive
     });
 
-    Logger.info("createPlan", "Plan created", {
-      context: {
-        planId: plan._id,
-        createdBy: req.user._id
-      },
-      req
-    });
+    // Logger.info("createPlan", "Plan created", {
+    //   context: {
+    //     planId: plan._id,
+    //     createdBy: req.user._id
+    //   },
+    //   req
+    // });
 
     res.status(201).json({
       success: true,
@@ -45,12 +45,12 @@ exports.createPlan = async (req, res) => {
 exports.getAllPlans = async (req, res) => {
   try {
     const plans = await Plan.find().sort({ createdAt: -1 });
-    Logger.info("getAllPlans", "Plans retrieved", {
-      context: {
-        retrievedBy: req.user._id
-      },
-      req
-    });
+    // Logger.info("getAllPlans", "Plans retrieved", {
+    //   context: {
+    //     retrievedBy: req.user._id
+    //   },
+    //   req
+    // });
     res.json({ success: true, plans });
   } catch (err) {
     Logger.error("getAllPlans", "Error retrieving plans", {
@@ -67,13 +67,13 @@ exports.getPlanById = async (req, res) => {
     const plan = await Plan.findById(req.params.id);
     if (!plan) return res.status(404).json({ message: "Plan not found" });
     
-    Logger.info("getPlanById", "Plan retrieved", {
-      context: {
-        planId: plan._id,
-        retrievedBy: req.user._id
-      },
-      req
-    });
+    // Logger.info("getPlanById", "Plan retrieved", {
+    //   context: {
+    //     planId: plan._id,
+    //     retrievedBy: req.user._id
+    //   },
+    //   req
+    // });
 
     res.json({ success: true, plan });
   } catch (err) {
@@ -96,13 +96,13 @@ exports.updatePlan = async (req, res) => {
 
     if (!plan) return res.status(404).json({ message: "Plan not found" });
 
-    Logger.info("updatePlan", "Plan updated", {
-      context: {
-        planId: plan._id,
-        updatedBy: req.user._id
-      },
-      req
-    });
+    // Logger.info("updatePlan", "Plan updated", {
+    //   context: {
+    //     planId: plan._id,
+    //     updatedBy: req.user._id
+    //   },
+    //   req
+    // });
     res.json({ success: true, plan });
   } catch (err) {
     Logger.error("updatePlan", "Error updating plan", {
@@ -126,13 +126,13 @@ exports.deletePlan = async (req, res) => {
     }
 
     await plan.remove();
-    Logger.info("deletePlan", "Plan deleted", {
-      context: {
-        planId: plan._id,
-        deletedBy: req.user._id
-      },
-      req
-    });
+    // Logger.info("deletePlan", "Plan deleted", {
+    //   context: {
+    //     planId: plan._id,
+    //     deletedBy: req.user._id
+    //   },
+    //   req
+    // });
     res.json({ success: true, message: "Plan deleted" });
   } catch (err) {
     Logger.error("deletePlan", "Error deleting plan", {
@@ -152,13 +152,13 @@ exports.togglePlanStatus = async (req, res) => {
     plan.isActive = !plan.isActive;
     await plan.save();
 
-    Logger.info("togglePlanStatus", "Plan status toggled", {
-      context: {
-        planId: plan._id,
-        toggledBy: req.user._id
-      },
-      req
-    });
+    // Logger.info("togglePlanStatus", "Plan status toggled", {
+    //   context: {
+    //     planId: plan._id,
+    //     toggledBy: req.user._id
+    //   },
+    //   req
+    // });
 
     res.json({ success: true, plan });
   } catch (err) {

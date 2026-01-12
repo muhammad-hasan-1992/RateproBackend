@@ -85,59 +85,45 @@ exports.getContactById = async (req, res) => {
 // Bulk create contacts from Excel
 exports.bulkCreateContacts = async (req, res) => {
     try {
-        console.log("🔵 BULK IMPORT STARTED");
 
         const currentUser = req.user;
-        console.log("👤 Current User:", currentUser?.email, "Role:", currentUser?.role);
-
+        
         // Role check
         if (currentUser.role !== 'companyAdmin') {
-            console.log("❌ Permission denied - not companyAdmin");
-            return res.status(403).json({ message: 'Access denied: Only CompanyAdmin can perform bulk upload' });
+           return res.status(403).json({ message: 'Access denied: Only CompanyAdmin can perform bulk upload' });
         }
 
         // File check
         if (!req.file) {
-            console.log("❌ No file received in request");
             return res.status(400).json({ message: 'No Excel file uploaded' });
         }
-
-        console.log("📄 File received:", req.file.originalname, "Size:", req.file.size);
 
         // Read Excel
         const workbook = XLSX.read(req.file.buffer, { type: 'buffer' });
         const sheetName = workbook.SheetNames[0];
-        console.log("📄 Excel sheet name:", sheetName);
 
         const worksheet = workbook.Sheets[sheetName];
         const rows = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false });
 
-        console.log("📊 Total rows including header:", rows.length);
 
         if (rows.length < 2) {
-            console.log("❌ No data rows found in Excel");
             return res.status(400).json({ message: 'Empty or invalid Excel file. Must have at least one data row.' });
         }
 
         const dataRows = rows.slice(1);
         const tenantId = currentUser.tenant._id ? currentUser.tenant._id.toString() : currentUser.tenant;
 
-        console.log("🏢 Tenant ID:", tenantId);
-        console.log("📊 Data rows to process:", dataRows.length);
-
         const successes = [];
         const errors = [];
 
         for (let i = 0; i < dataRows.length; i++) {
             const row = dataRows[i];
-            console.log(`\n🟡 Processing row ${i + 1}:`, row);
 
             const [name, email, phone, company, segmentName, tags, statusStr, contactCategoriesStr] = row.map(
                 val => val?.toString().trim() || ''
             );
 
             if (!name || !email) {
-                console.log("⚠️ Missing required fields:", { name, email });
                 errors.push({ row: row.join(','), message: 'Name and Email are required' });
                 continue;
             }
@@ -170,13 +156,9 @@ exports.bulkCreateContacts = async (req, res) => {
             // Check duplicate email
             const existingContact = await Contact.findOne({ email, tenantId });
             if (existingContact) {
-                console.log("⚠️ Email already exists:", email);
                 errors.push({ email, message: 'Contact already exists with this email' });
                 continue;
             }
-
-            // Create contact
-            console.log("🟢 Creating new contact:", email);
 
             const enrichment = enrichContact({ phone, email, company });
             const autoTags = deriveAutoTags({ createdAt: new Date(), lastActivity: new Date(), tags, status: statusStr });
@@ -200,23 +182,18 @@ exports.bulkCreateContacts = async (req, res) => {
             successes.push({ id: newContact._id, email: newContact.email });
         }
 
-        console.log("\n✅ BULK IMPORT FINISHED");
-        console.log("➡️ Total:", dataRows.length);
-        console.log("➡️ Success:", successes.length);
-        console.log("➡️ Errors:", errors.length);
-
         // Logging
-        Logger.info('bulkCreateContacts', 'Bulk contacts creation completed successfully', {
-            context: {
-                userId: currentUser._id,
-                action: 'Bulk Create Contacts',
-                status: 'Success',
-                processed: dataRows.length,
-                successes: successes.length,
-                failures: errors.length
-            },
-            req // add only if req is available in this scope
-        });
+        // Logger.info('bulkCreateContacts', 'Bulk contacts creation completed successfully', {
+        //     context: {
+        //         userId: currentUser._id,
+        //         action: 'Bulk Create Contacts',
+        //         status: 'Success',
+        //         processed: dataRows.length,
+        //         successes: successes.length,
+        //         failures: errors.length
+        //     },
+        //     req // add only if req is available in this scope
+        // });
 
         res.status(201).json({
             message: 'Bulk contact creation completed',
@@ -247,7 +224,6 @@ exports.bulkCreateContacts = async (req, res) => {
 // POST /api/contacts
 exports.createContact = async (req, res) => {
     try {
-        console.log("🔹 Request body:", req.body);
         const { name, email, phone, company, tags, status, contactCategories } = req.body;
 
         // const segmentId = segment ? (typeof segment === "string" ? segment : segment._id) : null;
@@ -266,7 +242,6 @@ exports.createContact = async (req, res) => {
         const { mergedString, mergedArray } = mergeTags(tags, autoTags);
 
         // Create contact with tenantId
-        console.log("🔹 Creating new contact...");
         const newContact = await Contact.create({
             tenantId: req.tenantId,      // IMPORTANT
             name,
@@ -282,13 +257,10 @@ exports.createContact = async (req, res) => {
             lastActivity: now,
         });
 
-        console.log("✅ Contact created:", newContact._id);
-
         const contactWithCategories = await Contact.findOne({
             _id: newContact._id,
             tenantId: req.tenantId,
         }).populate("contactCategories", "name type active");
-        console.log("🔹 Returning contact with populated categories");
         res.status(201).json(contactWithCategories);
 
     } catch (err) {
@@ -301,8 +273,6 @@ exports.createContact = async (req, res) => {
 exports.updateContact = async (req, res) => {
     try {
         const { name, email, phone, company, contactCategories, segment, tags, status } = req.body;
-
-        console.log("🔥 Incoming segment raw:", segment); // ← ye add karo
 
         let contact = await Contact.findOne({
             _id: req.params.id,
@@ -327,14 +297,9 @@ exports.updateContact = async (req, res) => {
                 newSegmentId = segment.id.toString();
             }
         }
-
-        console.log("Old Segment ID:", oldSegmentId);
-        console.log("New Segment ID:", newSegmentId);
-
         if (oldSegmentId !== newSegmentId) {
             contact.segment = newSegmentId || null;
         }
-        console.log("Segment updated to:", contact.segment);
 
         // Baaki fields
         if (name !== undefined) contact.name = name;

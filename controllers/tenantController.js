@@ -202,13 +202,13 @@ exports.updateTenant = async (req, res, next) => {
             head: headName,
             tenant: tenantId,
           });
-          Logger.info("updateTenant", "Department created", {
-            context: {
-              deptId: newDept._id,
-              tenantId
-            },
-            req
-          });
+          // Logger.info("updateTenant", "Department created", {
+          //   context: {
+          //     deptId: newDept._id,
+          //     tenantId
+          //   },
+          //   req
+          // });
           return newDept._id;
         }
       })
@@ -243,13 +243,13 @@ exports.updateTenant = async (req, res, next) => {
     // Flag update in User
     await User.findByIdAndUpdate(req.user._id, { companyProfileUpdated: true });
 
-    Logger.info("updateTenant", "Tenant updated successfully", {
-      context: {
-        tenantId,
-        updatedBy: req.user._id
-      },
-      req
-    });
+    // Logger.info("updateTenant", "Tenant updated successfully", {
+    //   context: {
+    //     tenantId,
+    //     updatedBy: req.user._id
+    //   },
+    //   req
+    // });
     return res.status(200).json({ success: true, tenant: updatedTenant });
   } catch (err) {
     Logger.error("updateTenant", "Server error", {
@@ -278,13 +278,13 @@ exports.getTenant = async (req, res) => {
       return res.status(404).json({ message: 'Tenant not found' });
     }
 
-    Logger.info("getTenant", "Tenant fetched successfully", {
-      context: {
-        tenantId: tenant._id,
-        fetchedBy: req.user?._id
-      },
-      req
-    });
+    // Logger.info("getTenant", "Tenant fetched successfully", {
+    //   context: {
+    //     tenantId: tenant._id,
+    //     fetchedBy: req.user?._id
+    //   },
+    //   req
+    // });
     res.status(200).json({ success: true, tenant });
   } catch (err) {
     Logger.error("getTenant", "Server error", {

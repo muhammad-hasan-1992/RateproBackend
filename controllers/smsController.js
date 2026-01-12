@@ -21,15 +21,15 @@ exports.sendSMSHandler = async (req, res, next) => {
     // --- Send SMS ---
     const result = await sendSMS({ to, body });
 
-    Logger.info("sendSMSHandler", "SMS sent successfully", {
-      context: {
-        to,
-        messageLength: body.length,
-        performedBy: req.user?._id,
-        providerResponse: result
-      },
-      req
-    });
+    // Logger.info("sendSMSHandler", "SMS sent successfully", {
+    //   context: {
+    //     to,
+    //     messageLength: body.length,
+    //     performedBy: req.user?._id,
+    //     providerResponse: result
+    //   },
+    //   req
+    // });
     return res.status(200).json({ message: "SMS sent successfully" });
   } catch (err) {
     Logger.error("sendSMSHandler", "Error sending SMS", {

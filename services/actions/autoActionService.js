@@ -5,19 +5,102 @@ const Logger = require("../../utils/auditLog");
 /**
  * Action Rules Configuration
  * Client Requirement 5: Action & Workflow Triggering Based on Analysis
+ * 
+ * Priority Logic:
+ * - HIGH: negative sentiment + high urgency, OR low rating (≤2), OR NPS detractor (≤3)
+ * - MEDIUM: negative sentiment + medium urgency, OR complaint classification, OR NPS detractor (4-6)
+ * - LOW: negative sentiment + low urgency, OR suggestions
  */
+
+// Keywords indicating user wants to be contacted
+const CONTACT_ME_KEYWORDS = [
+  "contact me", "call me", "reach out", "get in touch", "phone me",
+  "email me", "callback", "call back", "speak to someone", "talk to manager",
+  "need help", "urgent help", "please call", "waiting for call"
+];
+
+// Negative keywords that should trigger alerts
+const NEGATIVE_KEYWORDS = [
+  "terrible", "awful", "horrible", "worst", "hate", "angry", "furious",
+  "disappointed", "unacceptable", "disgusting", "pathetic", "useless",
+  "scam", "fraud", "lawsuit", "lawyer", "legal", "report",
+  "refund", "cancel", "never again", "waste of money", "rip off"
+];
+
+/**
+ * Check if user requested to be contacted
+ */
+function requestsContact(response) {
+  const text = [
+    response.review,
+    ...(response.answers || []).map(a => 
+      typeof a.answer === 'string' ? a.answer : ''
+    )
+  ].filter(Boolean).join(" ").toLowerCase();
+  
+  return CONTACT_ME_KEYWORDS.some(kw => text.includes(kw));
+}
+
+/**
+ * Check for negative keywords
+ */
+function containsNegativeKeywords(response) {
+  const text = [
+    response.review,
+    ...(response.answers || []).map(a => 
+      typeof a.answer === 'string' ? a.answer : ''
+    )
+  ].filter(Boolean).join(" ").toLowerCase();
+  
+  const found = NEGATIVE_KEYWORDS.filter(kw => text.includes(kw));
+  return { hasNegativeKeywords: found.length > 0, keywords: found };
+}
+
+/**
+ * Determine priority based on sentiment + urgency combination
+ */
+function determinePriorityFromInsight(insight, response) {
+  const sentiment = insight.sentiment;
+  const urgency = insight.urgency;
+  const rating = response.rating;
+  const npsScore = response.score;
+
+  // Critical conditions → HIGH
+  if (urgency === "high") return "high";
+  if (rating !== undefined && rating !== null && rating <= 2) return "high";
+  if (npsScore !== undefined && npsScore !== null && npsScore <= 3) return "high";
+  if (containsNegativeKeywords(response).hasNegativeKeywords) return "high";
+  if (requestsContact(response)) return "high";
+
+  // Negative + medium urgency → MEDIUM
+  if (sentiment === "negative" && urgency === "medium") return "medium";
+  if (npsScore !== undefined && npsScore !== null && npsScore <= 6) return "medium";
+  if (insight.classification?.isComplaint) return "medium";
+
+  // Negative + low urgency → LOW (not high!)
+  if (sentiment === "negative" && urgency === "low") return "low";
+
+  // Default
+  return "low";
+}
+
 const ACTION_RULES = {
-  // Negative sentiment triggers
-  negativeSentiment: {
-    condition: (insight) => insight.sentiment === "negative",
+  // ─────────────────────────────────────────────────────────
+  // HIGH PRIORITY TRIGGERS
+  // ─────────────────────────────────────────────────────────
+  
+  // Negative sentiment with HIGH urgency → High priority
+  negativeHighUrgency: {
+    condition: (insight) => insight.sentiment === "negative" && insight.urgency === "high",
     action: {
-      title: "Negative Feedback Detected",
+      title: "Urgent Negative Feedback",
       priority: "high",
       category: "Customer Complaint",
-      tags: ["auto", "negative-sentiment", "urgent"]
+      tags: ["auto", "negative-sentiment", "urgent", "high-urgency"]
     }
   },
-  // Low rating triggers
+
+  // Low rating (≤2) → High priority
   lowRating: {
     condition: (insight, response) => response.rating && response.rating <= 2,
     action: {
@@ -27,27 +110,68 @@ const ACTION_RULES = {
       tags: ["auto", "low-rating", "follow-up"]
     }
   },
-  // Detractor (NPS <= 6)
+
+  // NPS Detractor with very low score (0-3) → High priority
+  severeDetractor: {
+    condition: (insight, response) => response.score !== undefined && response.score <= 3,
+    action: {
+      title: "Severe NPS Detractor",
+      priority: "high",
+      category: "Detractor Recovery",
+      tags: ["auto", "nps", "detractor", "critical"]
+    }
+  },
+
+  // Contact request → High priority
+  contactRequest: {
+    condition: (insight, response) => requestsContact(response),
+    action: {
+      title: "Customer Callback Requested",
+      priority: "high",
+      category: "Callback",
+      tags: ["auto", "callback", "urgent", "contact-request"]
+    }
+  },
+
+  // Negative keywords → High priority
+  negativeKeywords: {
+    condition: (insight, response) => containsNegativeKeywords(response).hasNegativeKeywords,
+    action: {
+      title: "Negative Keywords Detected",
+      priority: "high",
+      category: "Customer Complaint",
+      tags: ["auto", "negative-keywords", "escalate"]
+    }
+  },
+
+  // ─────────────────────────────────────────────────────────
+  // MEDIUM PRIORITY TRIGGERS
+  // ─────────────────────────────────────────────────────────
+
+  // Negative sentiment with MEDIUM urgency → Medium priority
+  negativeMediumUrgency: {
+    condition: (insight) => insight.sentiment === "negative" && insight.urgency === "medium",
+    action: {
+      title: "Negative Feedback Detected",
+      priority: "medium",
+      category: "Customer Complaint",
+      tags: ["auto", "negative-sentiment", "medium-urgency"]
+    }
+  },
+
+  // NPS Detractor (4-6) → Medium priority
   detractor: {
-    condition: (insight, response) => response.score !== undefined && response.score <= 6,
+    condition: (insight, response) => 
+      response.score !== undefined && response.score >= 4 && response.score <= 6,
     action: {
       title: "NPS Detractor Identified",
-      priority: "high",
+      priority: "medium",
       category: "Detractor Recovery",
       tags: ["auto", "nps", "detractor"]
     }
   },
-  // High urgency from AI
-  highUrgency: {
-    condition: (insight) => insight.urgency === "high",
-    action: {
-      title: "Urgent Customer Issue",
-      priority: "high",
-      category: "Urgent",
-      tags: ["auto", "urgent", "escalate"]
-    }
-  },
-  // Complaint classification
+
+  // Complaint classification → Medium priority
   complaint: {
     condition: (insight) => insight.classification?.isComplaint === true,
     action: {
@@ -57,7 +181,38 @@ const ACTION_RULES = {
       tags: ["auto", "complaint"]
     }
   },
-  // Praise tracking (for recognition)
+
+  // ─────────────────────────────────────────────────────────
+  // LOW PRIORITY TRIGGERS
+  // ─────────────────────────────────────────────────────────
+
+  // Negative sentiment with LOW urgency → Low priority (NOT high!)
+  negativeLowUrgency: {
+    condition: (insight) => insight.sentiment === "negative" && insight.urgency === "low",
+    action: {
+      title: "Negative Feedback (Low Urgency)",
+      priority: "low",
+      category: "Feedback Review",
+      tags: ["auto", "negative-sentiment", "low-urgency"]
+    }
+  },
+
+  // Suggestion handling → Low priority
+  suggestion: {
+    condition: (insight) => insight.classification?.isSuggestion === true,
+    action: {
+      title: "Customer Suggestion",
+      priority: "low",
+      category: "Improvement",
+      tags: ["auto", "suggestion", "improvement"]
+    }
+  },
+
+  // ─────────────────────────────────────────────────────────
+  // NO ACTION (TRACKING ONLY)
+  // ─────────────────────────────────────────────────────────
+
+  // Praise tracking (for recognition) - no action created
   praise: {
     condition: (insight) => insight.classification?.isPraise === true && insight.sentiment === "positive",
     action: {
@@ -67,16 +222,6 @@ const ACTION_RULES = {
       tags: ["auto", "praise", "recognition"]
     },
     createAction: false // Don't create action, just track
-  },
-  // Suggestion handling
-  suggestion: {
-    condition: (insight) => insight.classification?.isSuggestion === true,
-    action: {
-      title: "Customer Suggestion",
-      priority: "low",
-      category: "Improvement",
-      tags: ["auto", "suggestion", "improvement"]
-    }
   }
 };
 
@@ -159,6 +304,14 @@ exports.createActionFromInsight = async ({
     status: "pending",
     source: "ai_generated",
     dueDate,
+    // ✅ NEW: SLA Tracking fields
+    // Client Requirement 6.3: SLA tracking
+    sla: {
+      targetResolutionTime: dueDate,
+      remindersSent: 0,
+      nextReminderAt: calculateNextReminder(primaryRule.priority),
+      isBreached: false
+    },
     metadata: {
       surveyId: survey._id,
       responseId: response._id,
@@ -242,6 +395,27 @@ function calculateDueDate(priority) {
       return new Date(now.getTime() + 72 * 60 * 60 * 1000);
     default:
       return new Date(now.getTime() + 48 * 60 * 60 * 1000);
+  }
+}
+
+/**
+ * Calculate next reminder time based on priority
+ * Client Requirement 6.3: Auto-reminders (24h/48h/72h)
+ */
+function calculateNextReminder(priority) {
+  const now = new Date();
+  switch (priority) {
+    case "high":
+      // First reminder in 4 hours
+      return new Date(now.getTime() + 4 * 60 * 60 * 1000);
+    case "medium":
+      // First reminder in 24 hours
+      return new Date(now.getTime() + 24 * 60 * 60 * 1000);
+    case "low":
+      // First reminder in 48 hours
+      return new Date(now.getTime() + 48 * 60 * 60 * 1000);
+    default:
+      return new Date(now.getTime() + 24 * 60 * 60 * 1000);
   }
 }
 

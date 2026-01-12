@@ -89,15 +89,15 @@ exports.analyzeFeedbackLogic = async (options, tenantId) => {
     }
 
     // ✅ Log success only after all analyses done
-    Logger.info("analyzeFeedbackLogic", "Feedback analysis logic executed successfully", {
-      context: {
-        tenantId,
-        totalResponses: responses.length,
-        totalAnalyzed: analyses.filter(a => a.status === "analyzed").length,
-        totalSkipped: analyses.filter(a => a.status === "skipped").length
-      },
-      req
-    });
+    // Logger.info("analyzeFeedbackLogic", "Feedback analysis logic executed successfully", {
+    //   context: {
+    //     tenantId,
+    //     totalResponses: responses.length,
+    //     totalAnalyzed: analyses.filter(a => a.status === "analyzed").length,
+    //     totalSkipped: analyses.filter(a => a.status === "skipped").length
+    //   },
+    //   req
+    // });
 
 
     return analyses;
@@ -141,13 +141,13 @@ exports.analyzeFeedback = async (req, res) => {
 
     const analyses = await exports.analyzeFeedbackLogic(value, req.tenantId);
 
-    Logger.info("analyzeFeedback", "Feedback analysis completed successfully", {
-      context: {
-        tenantId: req.tenantId,
-        analysisCount: analyses?.length || 0
-      },
-      req
-    });
+    // Logger.info("analyzeFeedback", "Feedback analysis completed successfully", {
+    //   context: {
+    //     tenantId: req.tenantId,
+    //     analysisCount: analyses?.length || 0
+    //   },
+    //   req
+    // });
 
 
     res.status(200).json({
@@ -216,13 +216,13 @@ exports.generateActions = async (req, res) => {
       created.push(action);
     }
 
-    Logger.info("generateActions", "Actions generated successfully", {
-      context: {
-        tenantId: req.tenantId,
-        count: created.length
-      },
-      req
-    });
+    // Logger.info("generateActions", "Actions generated successfully", {
+    //   context: {
+    //     tenantId: req.tenantId,
+    //     count: created.length
+    //   },
+    //   req
+    // });
 
 
     res.status(201).json({
@@ -427,15 +427,15 @@ exports.followUp = async (req, res) => {
     }
 
     // ✅ Success log
-    Logger.info("followUp", "Follow-up actions processed successfully", {
-      context: {
-        triggeredBy: user?.email,
-        method,
-        totalActions: actionIds.length,
-        successCount: results.length
-      },
-      req
-    });
+    // Logger.info("followUp", "Follow-up actions processed successfully", {
+    //   context: {
+    //     triggeredBy: user?.email,
+    //     method,
+    //     totalActions: actionIds.length,
+    //     successCount: results.length
+    //   },
+    //   req
+    // });
 
     res.status(200).json({
       success: true,

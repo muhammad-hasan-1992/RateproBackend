@@ -6,9 +6,10 @@ const Logger = require("../../../utils/auditLog");
 
 module.exports.start = async (responseId) => {
   const response = await SurveyResponse.findById(responseId);
-  const survey = await Survey.findById(response.survey);
-
+  
   if (!response) return;
+
+  const survey = await Survey.findById(response.survey);
 
   const feedbackText = (response.answers || [])
     .map(a => a.answer)
@@ -17,8 +18,7 @@ module.exports.start = async (responseId) => {
   if (!feedbackText.trim()) return;
 
   Logger.info("aiSentiment", "AI sentiment analysis started", {
-    context: { responseId, surveyId: survey._id },
-    req
+    context: { responseId, surveyId: survey._id }
   });
 
   const ai = await aiClient.complete({
@@ -39,7 +39,10 @@ module.exports.start = async (responseId) => {
   await response.save();
 
   Logger.info("aiSentiment", "AI sentiment updated", {
-    context: { responseId, sentiment: response.sentiment },
-    req
+    context: { 
+      responseId, 
+      surveyId: survey._id,
+      sentiment: response.sentiment 
+    }
   });
 };

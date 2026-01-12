@@ -162,12 +162,12 @@ exports.registerUser = async (req, res, next) => {
             console.error("❌ Error sending verification email:", emailError);
         }
 
-        Logger.info('registerUser', 'User registered successfully', {
-            context: {
-                email
-            },
-            req
-        });
+        // Logger.info('registerUser', 'User registered successfully', {
+        //     context: {
+        //         email
+        //     },
+        //     req
+        // });
         res.status(201).json({ message: "User registered. Verification link sent to email." });
     } catch (err) {
         console.error("Register user error:", err);
@@ -239,12 +239,12 @@ exports.verifyEmailLink = async (req, res, next) => {
         res.cookie("refreshToken", refreshToken, { httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: process.env.NODE_ENV === "production" ? "None" : "Lax", maxAge: 7 * 24 * 60 * 60 * 1000 });
         res.cookie("accessToken", accessToken, { httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: process.env.NODE_ENV === "production" ? "None" : "Lax", maxAge: 1 * 60 * 60 * 1000 });
 
-        Logger.info('verifyEmailLink', 'Email verified via link', {
-            context: {
-                email
-            },
-            req
-        });
+        // Logger.info('verifyEmailLink', 'Email verified via link', {
+        //     context: {
+        //         email
+        //     },
+        //     req
+        // });
         return res.redirect(`${baseURL}/app`);
     } catch (err) {
         console.error("Verify email link error:", err);
@@ -299,12 +299,12 @@ exports.verifyEmail = async (req, res, next) => {
         await User.findOneAndUpdate({ email }, { isVerified: true });
         await OTP.deleteMany({ email, purpose: "verify" });
 
-        Logger.info('verifyEmail', 'Email verified successfully', {
-            context: {
-                email
-            },
-            req
-        });
+        // Logger.info('verifyEmail', 'Email verified successfully', {
+        //     context: {
+        //         email
+        //     },
+        //     req
+        // });
         res.status(200).json({ message: "Email verified successfully" });
     } catch (err) {
         console.error("Verify email error:", err);
@@ -400,13 +400,13 @@ exports.resendOtp = async (req, res, next) => {
             console.error("❌ Error sending OTP email:", emailError);
         }
 
-        Logger.info('resendOtp', 'OTP resent successfully', {
-            context: {
-                email,
-                purpose
-            },
-            req
-        });
+        // Logger.info('resendOtp', 'OTP resent successfully', {
+        //     context: {
+        //         email,
+        //         purpose
+        //     },
+        //     req
+        // });
         res.status(200).json({ message: "OTP resent to email" });
     } catch (err) {
         console.error('Resend OTP error:', err);
@@ -553,14 +553,13 @@ exports.resendOtp = async (req, res, next) => {
 // };
 
 exports.loginUser = async (req, res, next) => {
-    console.log("\x1b[33m[DEBUG] loginUser CALLED\x1b[0m");
+   
     // Redact password from logs
     const safeBodyForLog = { ...req.body };
     if (safeBodyForLog.password) safeBodyForLog.password = "[REDACTED]";
     try {
         const { error } = loginSchema.validate(req.body);
         if (error) {
-            console.log("\x1b[31m[DEBUG] loginUser - validation failed\x1b[0m", error.details[0].message);
             Logger.error('loginUser', 'Validation failed', {
                 error: error,
                 context: {
@@ -572,8 +571,7 @@ exports.loginUser = async (req, res, next) => {
         }
 
         const { email, password } = req.body;
-        console.log("\x1b[34m[DEBUG] loginUser - finding user for email:\x1b[0m", email);
-
+        
         const user = await User.findOne({ email })
             .select("+password")
             .populate([
@@ -590,7 +588,6 @@ exports.loginUser = async (req, res, next) => {
             ]);
 
         if (!user) {
-            console.log("\x1b[31m[DEBUG] loginUser - user not found\x1b[0m", email);
             Logger.error('loginUser', 'User not found', {
                 context: {
                     email
@@ -600,11 +597,8 @@ exports.loginUser = async (req, res, next) => {
             return res.status(404).json({ message: "User not found" });
         }
 
-        console.log("\x1b[34m[DEBUG] loginUser - user found, checking password\x1b[0m", { userId: user._id.toString(), email: user.email });
-
         const isMatch = await bcrypt.compare(password, user.password);
         if (!isMatch) {
-            console.log("\x1b[31m[DEBUG] loginUser - invalid password\x1b[0m", { userId: user._id.toString(), email: user.email });
             Logger.error('loginUser', 'Invalid password', {
                 context: {
                     email
@@ -614,23 +608,20 @@ exports.loginUser = async (req, res, next) => {
             return res.status(401).json({ message: "Invalid password" });
         }
         if (!user.isVerified) {
-            console.log("\x1b[33m[DEBUG] loginUser - user not verified, creating OTP\x1b[0m", { email });
-
+           
             await OTP.deleteMany({ email, purpose: "verify" });
 
             const otpCode = generateOTP();
             const expiresAt = moment().add(process.env.OTP_EXPIRE_MINUTES, "minutes").toDate();
             await OTP.create({ email, code: otpCode, expiresAt, purpose: "verify" });
 
-            console.log("\x1b[33m[DEBUG] OTP created\x1b[0m", { email, otpCode: "[REDACTED]", expiresAt });
-
+            
             const baseURL = ["admin", "companyAdmin", "member"].includes(user.role)
                 ? process.env.FRONTEND_URL
                 : process.env.RATEPRO_URL;
 
             const verificationLink = `${baseURL}/verify-email?code=${otpCode}&email=${email}`;
-            console.log("\x1b[33m[DEBUG] verificationLink prepared\x1b[0m", { baseURL });
-
+           
             try {
                 const template = await EmailTemplate.findOne({
                     type: "verify_Email_On_Login",
@@ -652,16 +643,13 @@ exports.loginUser = async (req, res, next) => {
                         }
                     });
 
-                    console.log("\x1b[34m[DEBUG] loginUser - sending templated verification email\x1b[0m", { to: email, template: template.type });
                     sendEmail({
                         to: email,
                         subject: templateData.notificationSubject,
                         templateType: template.type,
                         templateData
                     });
-                    console.log("\x1b[32m[DEBUG] loginUser - templated email sent\x1b[0m", { to: email });
-                } else {
-                    console.log("\x1b[33m[DEBUG] loginUser - template missing, sending fallback email\x1b[0m");
+                    } else {
                     sendEmail({
                         to: email,
                         subject: "Verify Your Email",
@@ -670,8 +658,7 @@ exports.loginUser = async (req, res, next) => {
                <p>Click here: <a href="${verificationLink}">${verificationLink}</a></p>
                <p>This link expires in ${process.env.OTP_EXPIRE_MINUTES} minute(s).</p>`
                     });
-                    console.log("\x1b[32m[DEBUG] loginUser - fallback email sent\x1b[0m", { to: email });
-                }
+                   }
             } catch (emailError) {
                 console.error("❌ Error sending verification email:", emailError);
             }
@@ -688,7 +675,6 @@ exports.loginUser = async (req, res, next) => {
         }
 
         // Generate tokens
-        console.log("\x1b[34m[DEBUG] loginUser - generating tokens\x1b[0m");
         const accessToken = generateToken({
             _id: user._id.toString(),
             role: user.role,
@@ -730,13 +716,11 @@ exports.loginUser = async (req, res, next) => {
             ...cookieConfig,
             maxAge: 7 * 24 * 60 * 60 * 1000,
         });
-        console.log("\x1b[32m[DEBUG] loginUser - cookies set (tokens hidden)\x1b[0m");
 
         // Update last login
         user.lastLogin = Date.now();
         await user.save();
-        console.log("\x1b[32m[DEBUG] loginUser - user lastLogin updated\x1b[0m", { userId: user._id.toString(), lastLogin: user.lastLogin });
-
+        
         const safeUser = {
             _id: user._id,
             name: user.name,
@@ -756,12 +740,12 @@ exports.loginUser = async (req, res, next) => {
             lastLogin: user.lastLogin,
         };
 
-        Logger.info('loginUser', 'User logged in successfully', {
-            context: {
-                email
-            },
-            req
-        });
+        // Logger.info('loginUser', 'User logged in successfully', {
+        //     context: {
+        //         email
+        //     },
+        //     req
+        // });
         res.status(200).json({ accessToken, user: safeUser });
     } catch (err) {
         console.error('Login error:', err);
@@ -855,12 +839,12 @@ exports.forgotPassword = async (req, res, next) => {
             console.error("❌ Error sending OTP email:", emailError);
         }
 
-        Logger.info('forgotPassword', 'OTP sent successfully', {
-            context: {
-                email
-            },
-            req
-        });
+        // Logger.info('forgotPassword', 'OTP sent successfully', {
+        //     context: {
+        //         email
+        //     },
+        //     req
+        // });
         res.status(200).json({ message: "OTP sent for password reset" });
     } catch (err) {
         console.error("Forgot password error:", err);
@@ -906,12 +890,12 @@ exports.verifyResetCode = async (req, res, next) => {
             return res.status(400).json({ message: "Invalid or expired code" });
         }
 
-        Logger.info('verifyResetCode', 'OTP verified successfully', {
-            context: {
-                email
-            },
-            req
-        });
+        // Logger.info('verifyResetCode', 'OTP verified successfully', {
+        //     context: {
+        //         email
+        //     },
+        //     req
+        // });
         res.status(200).json({ message: "OTP verified. You can reset your password now." });
     } catch (err) {
         console.error("Verify reset code error:", err);
@@ -965,12 +949,12 @@ exports.resetPassword = async (req, res, next) => {
         await User.findOneAndUpdate({ email }, { password: hashed });
         await OTP.deleteMany({ email, purpose: "reset" });
 
-        Logger.info('resetPassword', 'Password reset successful', {
-            context: {
-                email
-            },
-            req
-        });
+        // Logger.info('resetPassword', 'Password reset successful', {
+        //     context: {
+        //         email
+        //     },
+        //     req
+        // });
         res.status(200).json({ message: "Password reset successful" });
     } catch (err) {
         console.error("Reset password error:", err);
@@ -1040,10 +1024,10 @@ exports.updateProfile = async (req, res, next) => {
         }
 
         await user.save();
-        Logger.info('updateProfile', 'Profile updated successfully', {
-            context: { userId: req.user._id },
-            req
-        });
+        // Logger.info('updateProfile', 'Profile updated successfully', {
+        //     context: { userId: req.user._id },
+        //     req
+        // });
 
         res.status(200).json({ message: "Profile updated", user });
     } catch (err) {
@@ -1083,9 +1067,9 @@ exports.getMe = async (req, res, next) => {
         }
 
         // ✅ Log success
-        Logger.info('getMe', 'User fetched successfully', {
-            context: { userId }
-        });
+        // Logger.info('getMe', 'User fetched successfully', {
+        //     context: { userId }
+        // });
 
         return res.status(200).json({ success: true, user });
     } catch (err) {
@@ -1114,13 +1098,13 @@ exports.logoutUser = async (req, res) => {
         res.clearCookie("refreshToken", cookieOptions);
 
         // ✅ Log successful logout
-        Logger.info('logoutUser', 'User logged out successfully', {
-            context: {
-                userId: req.user?._id,
-                email: req.user?.email
-            },
-            req
-        });
+        // Logger.info('logoutUser', 'User logged out successfully', {
+        //     context: {
+        //         userId: req.user?._id,
+        //         email: req.user?.email
+        //     },
+        //     req
+        // });
 
         res.status(200).json({ message: "Logged out" });
     } catch (err) {
@@ -1169,13 +1153,13 @@ exports.refreshAccessToken = async (req, res) => {
         };
 
         // ✅ Log success
-        Logger.info('refreshAccessToken', 'Access token refreshed successfully', {
-            context: {
-                userId: user._id,
-                email: user.email
-            }
-            // req nahi hai yahan, to nahi daal rahe
-        });
+        // Logger.info('refreshAccessToken', 'Access token refreshed successfully', {
+        //     context: {
+        //         userId: user._id,
+        //         email: user.email
+        //     }
+        //     // req nahi hai yahan, to nahi daal rahe
+        // });
 
         return res.status(200).json(responseData);
     } catch (err) {

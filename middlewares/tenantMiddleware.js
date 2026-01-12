@@ -126,7 +126,6 @@ exports.setTenantId = async (req, res, next) => {
 
     // ✅ Skip tenant check for admins
     if (req.user.role === "admin") {
-      console.log("setTenantId: Admin user detected, skipping tenant validation");
       req.tenantId = null; // No tenant restriction for admin
       return next();
     }
@@ -142,7 +141,6 @@ exports.setTenantId = async (req, res, next) => {
 
     // Set tenantId in req
     req.tenantId = user.tenant.toString();
-    console.log("setTenantId: Tenant ID set", { tenantId: req.tenantId, userId: req.user._id });
 
     // Optional: Validate body tenant
     const { tenant } = req.body || {};
@@ -174,22 +172,14 @@ exports.tenantCheck = asyncHandler(async (req, res, next) => {
 
   // 🔹 Check tenant association for non-admin users
   if (id || surveyId) {
-    console.log("tenantCheck: Fetching Survey", { id: id || surveyId });
     resource = await Survey.findById(id || surveyId).select("tenant");
   } else if (responseId) {
-    console.log("tenantCheck: Fetching SurveyResponse", { responseId });
     resource = await SurveyResponse.findById(responseId).select("tenant");
   } else if (feedbackId) {
-    console.log("tenantCheck: Fetching FeedbackAnalysis", { feedbackId });
     resource = await FeedbackAnalysis.findById(feedbackId).select("tenant");
   } else if (actionId) {
-    console.log("tenantCheck: Fetching Action", { actionId });
     resource = await Action.findById(actionId).select("tenant");
   }
-
-  console.log("tenantCheck: Resource fetched", {
-    resource: resource ? { id: resource._id, tenant: resource.tenant } : null,
-  });
 
   // 🔹 List / Create case (when no resource found)
   if (!resource) {
@@ -211,9 +201,5 @@ exports.tenantCheck = asyncHandler(async (req, res, next) => {
   }
 
   req.resource = resource;
-  console.log("tenantCheck: Tenant verified, proceeding", {
-    resourceId: resource._id,
-    tenantId,
-  });
   next();
 });

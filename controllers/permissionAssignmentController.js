@@ -52,17 +52,17 @@ exports.assignPermission = async (req, res, next) => {
             .populate('permissionId', 'name description');
 
         // ✅ Log only when successful (201)
-        Logger.info("assignPermission", "Permission successfully assigned", {
-            context: {
-                triggeredBy: req.user?.email,
-                tenantId: req.tenantId,
-                userId,
-                permissionId,
-                assignmentId: assignment._id,
-                statusCode: 201
-            },
-            req
-        });
+        // Logger.info("assignPermission", "Permission successfully assigned", {
+        //     context: {
+        //         triggeredBy: req.user?.email,
+        //         tenantId: req.tenantId,
+        //         userId,
+        //         permissionId,
+        //         assignmentId: assignment._id,
+        //         statusCode: 201
+        //     },
+        //     req
+        // });
 
         res.status(201).json({
             success: true,
@@ -105,15 +105,15 @@ exports.removePermission = async (req, res, next) => {
         await PermissionAssignment.findByIdAndDelete(id);
 
         // ✅ Log only when successfully deleted (200)
-        Logger.info("removePermission", "Permission assignment removed", {
-            context: {
-                triggeredBy: req.user?.email,
-                tenantId: req.tenantId,
-                assignmentId: id,
-                statusCode: 200
-            },
-            req
-        });
+        // Logger.info("removePermission", "Permission assignment removed", {
+        //     context: {
+        //         triggeredBy: req.user?.email,
+        //         tenantId: req.tenantId,
+        //         assignmentId: id,
+        //         statusCode: 200
+        //     },
+        //     req
+        // });
 
         res.status(200).json({
             success: true,
@@ -148,15 +148,15 @@ exports.getAssignments = async (req, res, next) => {
             .lean();
 
         // ✅ Log success (200)
-        Logger.info("getAssignments", "Fetched permission assignments successfully", {
-            context: {
-                triggeredBy: req.user?.email,
-                tenantId: req.tenantId,
-                assignmentCount: assignments.length,
-                statusCode: 200
-            },
-            req
-        });
+        // Logger.info("getAssignments", "Fetched permission assignments successfully", {
+        //     context: {
+        //         triggeredBy: req.user?.email,
+        //         tenantId: req.tenantId,
+        //         assignmentCount: assignments.length,
+        //         statusCode: 200
+        //     },
+        //     req
+        // });
 
         res.status(200).json({
             success: true,
@@ -192,15 +192,15 @@ exports.getTenantUsers = async (req, res, next) => {
             .lean();
 
         // ✅ log success when response is 200
-        Logger.info("getTenantUsers", "Fetched tenant users successfully", {
-            context: {
-                triggeredBy: req.user?.email,
-                tenantId: req.tenantId,
-                userCount: users.length,
-                statusCode: 200
-            },
-            req
-        });
+        // Logger.info("getTenantUsers", "Fetched tenant users successfully", {
+        //     context: {
+        //         triggeredBy: req.user?.email,
+        //         tenantId: req.tenantId,
+        //         userCount: users.length,
+        //         statusCode: 200
+        //     },
+        //     req
+        // });
 
 
         res.status(200).json({
@@ -233,8 +233,6 @@ exports.getUserPermissions = async (req, res, next) => {
     try {
         const userId = req.user._id;
         const tenantId = req.tenantId;
-
-        console.log('getUserPermissions: Fetching permissions', { userId, tenantId });
 
         const user = await User.findById(userId).populate({
             path: 'customRoles',
@@ -281,16 +279,16 @@ exports.getUserPermissions = async (req, res, next) => {
         ];
 
         // ✅ success log
-        Logger.info("getUserPermissions", "User permissions fetched successfully", {
-            context: {
-                triggeredBy: req.user?.email,
-                userId,
-                tenantId,
-                totalPermissions: allPermissions.length,
-                statusCode: 200
-            },
-            req
-        });
+        // Logger.info("getUserPermissions", "User permissions fetched successfully", {
+        //     context: {
+        //         triggeredBy: req.user?.email,
+        //         userId,
+        //         tenantId,
+        //         totalPermissions: allPermissions.length,
+        //         statusCode: 200
+        //     },
+        //     req
+        // });
 
 
         return res.status(200).json({ permissions: allPermissions });

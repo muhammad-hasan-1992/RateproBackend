@@ -1,4 +1,3 @@
-
 // const mongoose = require("mongoose");
 
 // const tenantSchema = new mongoose.Schema({
@@ -112,6 +111,7 @@ const tenantSchema = new mongoose.Schema({
       globalAiBrain: false,
       whiteLabel: false,
       prioritySupport: false,
+      notifications: true,  // ✅ ADD THIS - Enable notifications by default
     }
   },
 

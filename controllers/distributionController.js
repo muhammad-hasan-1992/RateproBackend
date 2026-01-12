@@ -57,14 +57,14 @@ exports.sendSurveyWhatsApp = async (req, res, next) => {
       }
     }
 
-    Logger.info("sendSurveyWhatsApp", "Survey WhatsApp messages attempted", {
-      context: {
-        tenantId: req.tenantId,
-        surveyId,
-        recipients: toList.length
-      },
-      req
-    });
+    // Logger.info("sendSurveyWhatsApp", "Survey WhatsApp messages attempted", {
+    //   context: {
+    //     tenantId: req.tenantId,
+    //     surveyId,
+    //     recipients: toList.length
+    //   },
+    //   req
+    // });
     res.status(200).json({ message: 'Send attempted', results });
   } catch (err) {
     console.error('sendSurveyWhatsApp error:', err);
@@ -90,13 +90,12 @@ exports.sendSurveyWhatsApp = async (req, res, next) => {
 // WhatsApp webhook handler
 exports.whatsappWebhook = async (req, res) => {
   try {
-    console.log('WhatsApp webhook received:', JSON.stringify(req.body).slice(0, 2000));
-    Logger.info("whatsappWebhook", "Received WhatsApp webhook", {
-      context: {
-        body: req.body
-      },
-      req
-    });
+    // Logger.info("whatsappWebhook", "Received WhatsApp webhook", {
+    //   context: {
+    //     body: req.body
+    //   },
+    //   req
+    // });
 
     // TODO: provider-specific parsing and status update
 

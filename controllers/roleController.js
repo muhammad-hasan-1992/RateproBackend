@@ -117,17 +117,17 @@ exports.createRole = async (req, res) => {
 
     await role.populate("permissions", "name");
 
-    Logger.info("createRole", "Role created successfully", {
-      context: {
-        triggeredBy: req.user?.email,
-        tenantId,
-        roleId: role._id,
-        roleName: role.name,
-        totalPermissions: permissions.length,
-        statusCode: 201,
-      },
-      req
-    });
+    // Logger.info("createRole", "Role created successfully", {
+    //   context: {
+    //     triggeredBy: req.user?.email,
+    //     tenantId,
+    //     roleId: role._id,
+    //     roleName: role.name,
+    //     totalPermissions: permissions.length,
+    //     statusCode: 201,
+    //   },
+    //   req
+    // });
 
 
     return res.status(201).json({ role });
@@ -188,15 +188,15 @@ exports.getRoles = async (req, res, next) => {
     const roles = await CustomRole.find(query).populate("permissions tenant");
     const total = await CustomRole.countDocuments(query);
 
-    Logger.info("getRoles", "Roles retrieved successfully", {
-      context: {
-        triggeredBy: req.user?.email,
-        tenantId: req.tenantId,
-        total,
-        statusCode: 200,
-      },
-      req
-    });
+    // Logger.info("getRoles", "Roles retrieved successfully", {
+    //   context: {
+    //     triggeredBy: req.user?.email,
+    //     tenantId: req.tenantId,
+    //     total,
+    //     statusCode: 200,
+    //   },
+    //   req
+    // });
 
     return res.status(200).json({ message: "Roles retrieved", roles, total });
   } catch (err) {
@@ -295,16 +295,16 @@ exports.assignRoleToUser = async (req, res, next) => {
       .select("-password")
       .populate("tenant customRoles");
 
-    Logger.info("assignRoleToUser", "Role assigned successfully", {
-      context: {
-        triggeredBy: req.user?.email,
-        tenantId: req.tenantId,
-        assignedRole: role.name,
-        targetUser: updatedUser.email,
-        statusCode: 200,
-      },
-      req
-    });
+    // Logger.info("assignRoleToUser", "Role assigned successfully", {
+    //   context: {
+    //     triggeredBy: req.user?.email,
+    //     tenantId: req.tenantId,
+    //     assignedRole: role.name,
+    //     targetUser: updatedUser.email,
+    //     statusCode: 200,
+    //   },
+    //   req
+    // });
 
 
     return res.status(200).json({ message: "Role assigned", user: updatedUser });
@@ -346,24 +346,24 @@ exports.removeRoleFromUser = async (req, res, next) => {
     const { userId } = req.params;
     const { roleId } = req.body;
 
-    Logger.info("removeRoleFromUser", "Starting role removal", {
-      context: {
-        userId,
-        roleId,
-        performedBy: req.user._id,
-        tenantId: req.tenantId,
-      },
-      req
-    });
+    // Logger.info("removeRoleFromUser", "Starting role removal", {
+    //   context: {
+    //     userId,
+    //     roleId,
+    //     performedBy: req.user._id,
+    //     tenantId: req.tenantId,
+    //   },
+    //   req
+    // });
 
     // --- Role-based restrictions ---
     if (req.user.role === 'companyAdmin') {
-      Logger.info("removeRoleFromUser", "Request by companyAdmin", {
-        context: {
-          adminId: req.user._id,
-        },
-        req
-      });
+      // Logger.info("removeRoleFromUser", "Request by companyAdmin", {
+      //   context: {
+      //     adminId: req.user._id,
+      //   },
+      //   req
+      // });
     } else if (req.user.role === 'member') {
       const populatedUser = await User.findById(req.user._id).populate({
         path: 'customRoles',
@@ -476,14 +476,14 @@ exports.removeRoleFromUser = async (req, res, next) => {
     role.userCount = role.users.length;
     await role.save();
 
-    Logger.info("removeRoleFromUser", "Role successfully removed", {
-      context: {
-        userId,
-        roleId,
-        tenantId: req.tenantId,
-      },
-      req
-    });
+    // Logger.info("removeRoleFromUser", "Role successfully removed", {
+    //   context: {
+    //     userId,
+    //     roleId,
+    //     tenantId: req.tenantId,
+    //   },
+    //   req
+    // });
 
     const updatedUser = await User.findById(userId)
       .select('-password')
@@ -527,23 +527,23 @@ exports.updateRole = async (req, res, next) => {
     const { roleId } = req.params;
     const { name, permissions, description, tenantId } = req.body;
 
-    Logger.info("updateRole", "Starting role update", {
-      context: {
-        roleId,
-        performedBy: req.user._id,
-        tenantId: req.tenantId,
-      },
-      req
-    });
+    // Logger.info("updateRole", "Starting role update", {
+    //   context: {
+    //     roleId,
+    //     performedBy: req.user._id,
+    //     tenantId: req.tenantId,
+    //   },
+    //   req
+    // });
 
     // --- Role-based restrictions ---
     if (req.user.role === 'companyAdmin') {
-      Logger.info("updateRole", "Request by companyAdmin", {
-        context: {
-          adminId: req.user._id,
-        },
-        req
-      });
+      // Logger.info("updateRole", "Request by companyAdmin", {
+      //   context: {
+      //     adminId: req.user._id,
+      //   },
+      //   req
+      // });
     } else if (req.user.role === 'member') {
       const populatedUser = await User.findById(req.user._id).populate({
         path: 'customRoles',
@@ -644,13 +644,13 @@ exports.updateRole = async (req, res, next) => {
     role.tenant = tenantId || role.tenant;
 
     await role.save();
-    Logger.info("updateRole", "Role successfully updated", {
-      context: {
-        roleId,
-        updatedBy: req.user._id,
-      },
-      req
-    });
+    // Logger.info("updateRole", "Role successfully updated", {
+    //   context: {
+    //     roleId,
+    //     updatedBy: req.user._id,
+    //   },
+    //   req
+    // });
 
     const updatedRole = await CustomRole.findById(roleId).populate(
       'permissions tenant'
@@ -687,23 +687,23 @@ exports.deleteRole = async (req, res, next) => {
     }
 
     const { roleId } = req.params;
-    Logger.info("deleteRole", "Start deleting role", {
-      context: {
-        roleId,
-        performedBy: req.user._id,
-        tenantId: req.tenantId,
-      },
-      req
-    });
+    // Logger.info("deleteRole", "Start deleting role", {
+    //   context: {
+    //     roleId,
+    //     performedBy: req.user._id,
+    //     tenantId: req.tenantId,
+    //   },
+    //   req
+    // });
 
     // --- Role-based restrictions ---
     if (req.user.role === 'companyAdmin') {
-      Logger.info("deleteRole", "Request by companyAdmin", {
-        context: {
-          adminId: req.user._id,
-        },
-        req
-      });
+      // Logger.info("deleteRole", "Request by companyAdmin", {
+      //   context: {
+      //     adminId: req.user._id,
+      //   },
+      //   req
+      // });
     } else if (req.user.role === 'member') {
       const populatedUser = await User.findById(req.user._id).populate({
         path: 'customRoles',
@@ -786,23 +786,23 @@ exports.deleteRole = async (req, res, next) => {
       { customRoles: roleId },
       { $pull: { customRoles: roleId } }
     );
-    Logger.info("deleteRole", "Role removed from users", {
-      context: {
-        roleId,
-        affectedUsers: updatedUsers.modifiedCount,
-      },
-      req
-    });
+    // Logger.info("deleteRole", "Role removed from users", {
+    //   context: {
+    //     roleId,
+    //     affectedUsers: updatedUsers.modifiedCount,
+    //   },
+    //   req
+    // });
 
     // --- Delete role ---
     await CustomRole.findByIdAndDelete(roleId);
-    Logger.info("deleteRole", "Role deleted successfully", {
-      context: {
-        roleId,
-        deletedBy: req.user._id,
-      },
-      req
-    });
+    // Logger.info("deleteRole", "Role deleted successfully", {
+    //   context: {
+    //     roleId,
+    //     deletedBy: req.user._id,
+    //   },
+    //   req
+    // });
 
     return res.status(200).json({ message: 'Role deleted successfully' });
   } catch (err) {
@@ -834,23 +834,23 @@ exports.getUsersByRole = async (req, res, next) => {
     }
 
     const { roleId } = req.params;
-    Logger.info("getUsersByRole: Start fetching users by role", {
-      context: {
-        roleId,
-        performedBy: req.user._id,
-        tenantId: req.tenantId,
-      },
-      req
-    });
+    // Logger.info("getUsersByRole: Start fetching users by role", {
+    //   context: {
+    //     roleId,
+    //     performedBy: req.user._id,
+    //     tenantId: req.tenantId,
+    //   },
+    //   req
+    // });
 
     // --- Role-based restrictions ---
     if (req.user.role === "companyAdmin") {
-      Logger.info("getUsersByRole: Access granted to companyAdmin", {
-        context: {
-          userId: req.user._id,
-        },
-        req
-      });
+      // Logger.info("getUsersByRole: Access granted to companyAdmin", {
+      //   context: {
+      //     userId: req.user._id,
+      //   },
+      //   req
+      // });
     } else if (req.user.role === "member") {
       const populatedUser = await User.findById(req.user._id).populate({
         path: "customRoles",
@@ -885,12 +885,12 @@ exports.getUsersByRole = async (req, res, next) => {
           .json({ message: "Access denied: Permission 'role:read' required" });
       }
 
-      Logger.info("getUsersByRole: Member permission verified", {
-        context: {
-          userId: req.user._id,
-        },
-        req
-      });
+      // Logger.info("getUsersByRole: Member permission verified", {
+      //   context: {
+      //     userId: req.user._id,
+      //   },
+      //   req
+      // });
     } else {
       Logger.warn("getUsersByRole: Unauthorized role access attempt", {
         context: {
@@ -937,14 +937,14 @@ exports.getUsersByRole = async (req, res, next) => {
     }
 
     // --- Success ---
-    Logger.info("getUsersByRole", "Users retrieved successfully", {
-      context: {
-        roleId,
-        totalUsers: role.users?.length || 0,
-        requestedBy: req.user._id,
-      },
-      req
-    });
+    // Logger.info("getUsersByRole", "Users retrieved successfully", {
+    //   context: {
+    //     roleId,
+    //     totalUsers: role.users?.length || 0,
+    //     requestedBy: req.user._id,
+    //   },
+    //   req
+    // });
 
     return res
       .status(200)

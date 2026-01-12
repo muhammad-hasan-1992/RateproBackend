@@ -13,23 +13,42 @@ async function retagInactiveContacts() {
   }).cursor();
 
   let processed = 0;
+  let skipped = 0;
+  let errors = 0;
 
   for await (const contact of cursor) {
-    const autoTags = deriveAutoTags(contact);
+    try {
+      const autoTags = deriveAutoTags(contact);
 
-    const merged = new Set([
-      ...(contact.tags || []),
-      ...autoTags,
-    ]);
+      const merged = new Set([
+        ...(contact.tags || []),
+        ...autoTags,
+      ]);
 
-    contact.tags = Array.from(merged);
-    contact.autoTags = autoTags;
+      contact.tags = Array.from(merged);
+      contact.autoTags = autoTags;
 
-    await contact.save();
-    processed++;
+      // ✅ FIX: Use updateOne to bypass full document validation
+      // This only updates specific fields without triggering contactCategories validation
+      await Contact.updateOne(
+        { _id: contact._id },
+        {
+          $set: {
+            tags: contact.tags,
+            autoTags: contact.autoTags
+          }
+        }
+      );
+      
+      processed++;
+    } catch (err) {
+      console.error(`⚠️ Failed to retag contact ${contact._id}:`, err.message);
+      errors++;
+    }
   }
 
-  console.log(`🔁 Retagged inactive contacts: ${processed}`);
+  console.log(`🔁 Retagged inactive contacts: ${processed}, errors: ${errors}`);
+  return { processed, skipped, errors };
 }
 
 module.exports = retagInactiveContacts;

@@ -36,12 +36,12 @@ exports.getExecutiveDashboard = async (req, res, next) => {
       };
     }
 
-    Logger.info("getExecutiveDashboard", "Fetched executive dashboard metrics", {
-      context: {
-        tenantId
-      },
-      req
-    });
+    // Logger.info("getExecutiveDashboard", "Fetched executive dashboard metrics", {
+    //   context: {
+    //     tenantId
+    //   },
+    //   req
+    // });
 
     res.status(200).json({ metrics });
   } catch (err) {
@@ -85,12 +85,12 @@ exports.getOperationalDashboard = async (req, res, next) => {
 
     const topComplaints = topComplaintCategories.map(c => ({ category: c._id, count: c.count }));
 
-    Logger.info("getOperationalDashboard", "Fetched operational dashboard metrics", {
-      context: {
-        tenantId
-      },
-      req
-    });
+    // Logger.info("getOperationalDashboard", "Fetched operational dashboard metrics", {
+    //   context: {
+    //     tenantId
+    //   },
+    //   req
+    // });
     res.status(200).json({
       recentNegativeFeedback,
       openActionsCount,

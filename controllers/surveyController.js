@@ -1248,46 +1248,682 @@ exports.getSurveyResponses = async (req, res, next) => {
     }
 };
 
-// ===== GET SURVEY ANALYTICS =====
+// Replace the existing getSurveyAnalytics function with this:
+
+// ===== GET SURVEY ANALYTICS (COMPREHENSIVE) =====
 exports.getSurveyAnalytics = async (req, res, next) => {
     try {
         const { surveyId } = req.params;
+        const { range = '30d', startDate, endDate } = req.query;
 
-        await Logger.info("📥 Fetching survey analytics started", {
+        await Logger.info("📥 Fetching comprehensive survey analytics", {
             surveyId,
+            range,
             userId: req.user?._id,
             tenantId: req.user?.tenant
         });
 
-        const survey = await Survey.findById(surveyId);
+        // Verify survey exists
+        const survey = await Survey.findById(surveyId).lean();
         if (!survey) {
             await Logger.warn("⚠️ Survey not found", { surveyId });
             return res.status(404).json({ message: "Survey not found" });
         }
 
-        const responses = await SurveyResponse.find({ survey: surveyId });
-        const totalResponses = responses.length;
+        // Parse date range
+        const days = parseInt(range.replace('d', '')) || 30;
+        let rangeStart, rangeEnd, previousStart, previousEnd;
+        
+        if (startDate && endDate) {
+            rangeStart = new Date(startDate);
+            rangeEnd = new Date(endDate);
+            const periodDuration = rangeEnd - rangeStart;
+            previousStart = new Date(rangeStart - periodDuration);
+            previousEnd = new Date(rangeStart);
+        } else {
+            rangeEnd = new Date();
+            rangeStart = new Date();
+            rangeStart.setDate(rangeStart.getDate() - days);
+            previousEnd = new Date(rangeStart);
+            previousStart = new Date(rangeStart);
+            previousStart.setDate(previousStart.getDate() - days);
+        }
 
-        const analytics = {
-            totalResponses,
-            averageScore: survey.averageScore || 0,
-            averageRating: survey.averageRating || 0,
-            responses: responses.map(r => ({
-                user: r.user ? r.user.name : "Anonymous",
-                score: r.score,
-                rating: r.rating,
-                review: r.review,
-            })),
+        const dateFilter = { createdAt: { $gte: rangeStart, $lte: rangeEnd } };
+        const previousPeriodFilter = { createdAt: { $gte: previousStart, $lte: previousEnd } };
+
+        // Fetch current and previous period responses
+        const [responses, previousResponses] = await Promise.all([
+            SurveyResponse.find({ survey: surveyId, ...dateFilter }).lean(),
+            SurveyResponse.find({ survey: surveyId, ...previousPeriodFilter }).lean()
+        ]);
+
+        const totalResponses = responses.length;
+        const previousTotal = previousResponses.length;
+
+        // ============================================================================
+        // HELPER: Extract rating/score from response
+        // Handles both response-level rating AND answer-level ratings
+        // ============================================================================
+        const extractRating = (response) => {
+            // First check response-level rating
+            if (response.rating !== null && response.rating !== undefined) {
+                return Number(response.rating);
+            }
+            
+            // Check answers for rating-type questions
+            if (response.answers && Array.isArray(response.answers)) {
+                for (const answer of response.answers) {
+                    if (typeof answer.answer === 'number' && answer.answer >= 1 && answer.answer <= 5) {
+                        return answer.answer;
+                    }
+                }
+            }
+            
+            return null;
         };
 
-        await Logger.info("✅ Survey analytics fetched successfully", {
+        const extractNPSScore = (response) => {
+            // First check response-level score
+            if (response.score !== null && response.score !== undefined) {
+                return Number(response.score);
+            }
+            
+            // Check answers for NPS-type questions (0-10 scale)
+            if (response.answers && Array.isArray(response.answers)) {
+                for (const answer of response.answers) {
+                    if (typeof answer.answer === 'number' && answer.answer >= 0 && answer.answer <= 10) {
+                        return answer.answer;
+                    }
+                }
+            }
+            
+            return null;
+        };
+
+        // ============================================================================
+        // 1. OVERVIEW METRICS WITH TRENDS
+        // ============================================================================
+        
+        // Calculate average rating (using helper)
+        const ratingsArray = responses
+            .map(r => extractRating(r))
+            .filter(r => r !== null);
+        const averageRating = ratingsArray.length > 0
+            ? Number((ratingsArray.reduce((a, b) => a + b, 0) / ratingsArray.length).toFixed(2))
+            : 0;
+
+        const prevRatings = previousResponses
+            .map(r => extractRating(r))
+            .filter(r => r !== null);
+        const prevAvgRating = prevRatings.length > 0
+            ? Number((prevRatings.reduce((a, b) => a + b, 0) / prevRatings.length).toFixed(2))
+            : 0;
+
+        // Calculate completion rate
+        const completedResponses = responses.filter(r => r.status === 'submitted').length;
+        const completionRate = totalResponses > 0
+            ? Number(((completedResponses / totalResponses) * 100).toFixed(1))
+            : 0;
+
+        const prevCompleted = previousResponses.filter(r => r.status === 'submitted').length;
+        const prevCompletionRate = previousTotal > 0
+            ? Number(((prevCompleted / previousTotal) * 100).toFixed(1))
+            : 0;
+
+        // Calculate NPS (using helper for score extraction)
+        const { calculateNPS } = require("../utils/analyticsUtils");
+        
+        // Enhance responses with extracted scores for NPS calculation
+        const responsesWithScores = responses.map(r => ({
+            ...r,
+            score: extractNPSScore(r)
+        }));
+        const prevResponsesWithScores = previousResponses.map(r => ({
+            ...r,
+            score: extractNPSScore(r)
+        }));
+        
+        const npsData = calculateNPS(responsesWithScores);
+        const prevNpsData = calculateNPS(prevResponsesWithScores);
+
+        // Calculate trends (percentage change)
+        const calculateTrend = (current, previous) => {
+            if (previous === 0) return current > 0 ? 100 : 0;
+            return Number((((current - previous) / previous) * 100).toFixed(1));
+        };
+
+        const responseTrend = calculateTrend(totalResponses, previousTotal);
+        const ratingTrend = calculateTrend(averageRating, prevAvgRating);
+        const completionTrend = calculateTrend(completionRate, prevCompletionRate);
+        const npsTrend = npsData.score !== null && prevNpsData.score !== null
+            ? Number((npsData.score - prevNpsData.score).toFixed(1))
+            : 0;
+
+        // Response rate and satisfaction
+        const totalInvited = survey.targetAudience?.emails?.length || 
+                            survey.targetAudience?.phones?.length || 
+                            totalResponses || 1;
+        const responseRate = totalInvited > 0
+            ? Number(((totalResponses / totalInvited) * 100).toFixed(1))
+            : 0;
+
+        const satisfactionScore = averageRating > 0
+            ? Number(((averageRating / 5) * 100).toFixed(1))
+            : 0;
+
+        const avgCompletionTime = (() => {
+            const times = responses.filter(r => r.completionTime).map(r => r.completionTime);
+            return times.length > 0 ? Math.round(times.reduce((a, b) => a + b, 0) / times.length) : 0;
+        })();
+
+        // ============================================================================
+        // 2. TRENDS DATA
+        // ============================================================================
+        
+        const responsesByDate = {};
+        responses.forEach(r => {
+            const date = new Date(r.createdAt).toISOString().split('T')[0];
+            if (!responsesByDate[date]) {
+                responsesByDate[date] = { date, count: 0, ratings: [], scores: [] };
+            }
+            responsesByDate[date].count++;
+            
+            const rating = extractRating(r);
+            if (rating !== null) responsesByDate[date].ratings.push(rating);
+            
+            const score = extractNPSScore(r);
+            if (score !== null) responsesByDate[date].scores.push(score);
+        });
+
+        const responsesByDateArray = Object.values(responsesByDate).map(day => ({
+            date: day.date,
+            count: day.count,
+            avgRating: day.ratings.length > 0
+                ? Number((day.ratings.reduce((a, b) => a + b, 0) / day.ratings.length).toFixed(2))
+                : 0
+        })).sort((a, b) => new Date(a.date) - new Date(b.date));
+
+        // Rating trends (use averageRating field to match frontend)
+        const ratingTrends = responsesByDateArray
+            .filter(d => d.avgRating > 0)
+            .map(d => ({
+                date: d.date,
+                averageRating: d.avgRating
+            }));
+
+        // NPS history (by week)
+        const weeklyGroups = {};
+        responses.forEach(r => {
+            const weekStart = new Date(r.createdAt);
+            weekStart.setDate(weekStart.getDate() - weekStart.getDay());
+            const weekKey = weekStart.toISOString().split('T')[0];
+            if (!weeklyGroups[weekKey]) weeklyGroups[weekKey] = [];
+            weeklyGroups[weekKey].push({ ...r, score: extractNPSScore(r) });
+        });
+
+        const npsHistory = Object.entries(weeklyGroups)
+            .map(([week, weekResponses]) => {
+                const weekNps = calculateNPS(weekResponses);
+                return {
+                    date: week,
+                    npsScore: weekNps.score || 0
+                };
+            })
+            .filter(item => item.npsScore !== 0 || weeklyGroups[item.date]?.some(r => r.score !== null))
+            .sort((a, b) => new Date(a.date) - new Date(b.date));
+
+        // Completion trends
+        const completionTrends = responsesByDateArray.map(d => ({
+            date: d.date,
+            rate: completionRate
+        }));
+
+        // ============================================================================
+        // 3. SENTIMENT ANALYSIS
+        // ============================================================================
+        
+        const sentimentCounts = { positive: 0, neutral: 0, negative: 0 };
+        const keywords = {};
+        const themes = {};
+        
+        responses.forEach(r => {
+            if (r.analysis?.sentiment) {
+                sentimentCounts[r.analysis.sentiment]++;
+            } else {
+                // Infer sentiment from rating if no analysis
+                const rating = extractRating(r);
+                if (rating !== null) {
+                    if (rating >= 4) sentimentCounts.positive++;
+                    else if (rating >= 3) sentimentCounts.neutral++;
+                    else sentimentCounts.negative++;
+                }
+            }
+            
+            if (r.analysis?.keywords) {
+                r.analysis.keywords.forEach(kw => {
+                    keywords[kw] = (keywords[kw] || 0) + 1;
+                });
+            }
+            if (r.analysis?.themes) {
+                r.analysis.themes.forEach(theme => {
+                    themes[theme] = (themes[theme] || 0) + 1;
+                });
+            }
+        });
+
+        const topKeywords = Object.entries(keywords)
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 10)
+            .map(([word, count]) => ({ word, count }));
+
+        const topThemes = Object.entries(themes)
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 5)
+            .map(([theme, count]) => ({ theme, count }));
+
+        // ============================================================================
+        // 4. DEMOGRAPHICS
+        // ============================================================================
+        
+        const deviceCounts = {};
+        const locationCounts = {};
+        const hourCounts = {};
+        const dayCounts = {};
+
+        responses.forEach(r => {
+            // Device - use metadata if available, otherwise infer from IP or default
+            const device = r.metadata?.device || r.device || 'Unknown';
+            deviceCounts[device] = (deviceCounts[device] || 0) + 1;
+            
+            // Location
+            const location = r.metadata?.location || r.metadata?.city || r.location || 'Unknown';
+            locationCounts[location] = (locationCounts[location] || 0) + 1;
+            
+            // Time of day
+            const hour = new Date(r.createdAt).getHours();
+            hourCounts[hour] = (hourCounts[hour] || 0) + 1;
+            
+            // Day of week
+            const day = new Date(r.createdAt).getDay();
+            dayCounts[day] = (dayCounts[day] || 0) + 1;
+        });
+
+        // Only include if we have meaningful data
+        const byDevice = Object.entries(deviceCounts)
+            .filter(([device]) => device !== 'Unknown' || Object.keys(deviceCounts).length === 1)
+            .map(([device, count]) => ({
+                device,
+                count,
+                percentage: totalResponses > 0 ? Number(((count / totalResponses) * 100).toFixed(1)) : 0
+            }));
+
+        const byLocation = Object.entries(locationCounts)
+            .filter(([city]) => city !== 'Unknown' || Object.keys(locationCounts).length === 1)
+            .map(([city, count]) => ({
+                city,
+                count,
+                percentage: totalResponses > 0 ? Number(((count / totalResponses) * 100).toFixed(1)) : 0
+            }))
+            .sort((a, b) => b.count - a.count)
+            .slice(0, 10);
+
+        const byTimeOfDay = Object.entries(hourCounts).map(([hour, count]) => ({
+            hour: `${String(hour).padStart(2, '0')}:00`,
+            count,
+            percentage: totalResponses > 0 ? Number(((count / totalResponses) * 100).toFixed(1)) : 0
+        })).sort((a, b) => parseInt(a.hour) - parseInt(b.hour));
+
+        const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+        const byDayOfWeek = Object.entries(dayCounts).map(([day, count]) => ({
+            dayName: dayNames[parseInt(day)],
+            dayNum: parseInt(day),
+            count,
+            percentage: totalResponses > 0 ? Number(((count / totalResponses) * 100).toFixed(1)) : 0
+        })).sort((a, b) => a.dayNum - b.dayNum);
+
+        // ============================================================================
+        // 5. QUESTION PERFORMANCE
+        // ============================================================================
+        
+        // Build question map from survey - support both string id and ObjectId
+        const questionMap = {};
+        (survey.questions || []).forEach((q, idx) => {
+            // Store by string ID
+            if (q.id) {
+                questionMap[q.id] = {
+                    questionNumber: idx + 1,
+                    title: q.questionText || q.title?.en || q.title || `Question ${idx + 1}`,
+                    type: q.type
+                };
+            }
+            // Also store by ObjectId string if available
+            if (q._id) {
+                questionMap[q._id.toString()] = {
+                    questionNumber: idx + 1,
+                    title: q.questionText || q.title?.en || q.title || `Question ${idx + 1}`,
+                    type: q.type
+                };
+            }
+        });
+
+        const questionStats = {};
+        
+        responses.forEach(r => {
+            if (r.answers && Array.isArray(r.answers)) {
+                r.answers.forEach((answer, idx) => {
+                    // Try to match by questionId (could be ObjectId or string)
+                    const qIdStr = answer.questionId?.toString();
+                    
+                    // Find matching question
+                    let qInfo = questionMap[qIdStr];
+                    
+                    // If not found, try to match by index
+                    if (!qInfo && survey.questions[idx]) {
+                        const fallbackQ = survey.questions[idx];
+                        qInfo = {
+                            questionNumber: idx + 1,
+                            title: fallbackQ.questionText || fallbackQ.title || `Question ${idx + 1}`,
+                            type: fallbackQ.type
+                        };
+                    }
+                    
+                    if (!qInfo) {
+                        qInfo = { questionNumber: idx + 1, title: `Question ${idx + 1}`, type: 'unknown' };
+                    }
+                    
+                    const statKey = qInfo.questionNumber.toString();
+                    
+                    if (!questionStats[statKey]) {
+                        questionStats[statKey] = {
+                            questionNumber: qInfo.questionNumber,
+                            title: qInfo.title,
+                            type: qInfo.type,
+                            responseCount: 0,
+                            skipCount: 0,
+                            ratings: []
+                        };
+                    }
+                    
+                    if (answer.answer !== null && answer.answer !== undefined && answer.answer !== '') {
+                        questionStats[statKey].responseCount++;
+                        if (typeof answer.answer === 'number') {
+                            questionStats[statKey].ratings.push(answer.answer);
+                        }
+                    } else {
+                        questionStats[statKey].skipCount++;
+                    }
+                });
+            }
+        });
+
+        const questionPerformance = Object.values(questionStats).map(q => {
+            const totalAnswers = q.responseCount + q.skipCount;
+            const avgRating = q.ratings.length > 0 
+                ? Number((q.ratings.reduce((a, b) => a + b, 0) / q.ratings.length).toFixed(2))
+                : 0;
+            const completionRateQ = totalAnswers > 0 ? Number(((q.responseCount / totalAnswers) * 100).toFixed(1)) : 100;
+            const skipRate = totalAnswers > 0 ? Number(((q.skipCount / totalAnswers) * 100).toFixed(1)) : 0;
+            
+            return {
+                questionNumber: q.questionNumber,
+                title: q.title,
+                completionRate: completionRateQ,
+                averageRating: avgRating,
+                averageTimeSpent: 0,
+                skipRate,
+                performanceScore: Math.round((completionRateQ * 0.6) + (avgRating > 0 ? avgRating * 8 : 50 * 0.4))
+            };
+        }).sort((a, b) => a.questionNumber - b.questionNumber);
+
+        // Drop-off points
+        const dropoffPoints = questionPerformance
+            .filter(q => q.skipRate > 10)
+            .map(q => ({
+                questionNumber: q.questionNumber,
+                questionTitle: q.title,
+                dropoffRate: q.skipRate,
+                usersReached: totalResponses,
+                usersCompleted: Math.round(totalResponses * (q.completionRate / 100)),
+                usersDropped: Math.round(totalResponses * (q.skipRate / 100))
+            }))
+            .sort((a, b) => b.dropoffRate - a.dropoffRate);
+
+        // ============================================================================
+        // 6. FEEDBACK INSIGHTS
+        // ============================================================================
+        
+        // Use NPS categories to infer complaints/praises if analysis not available
+        const complaints = responses.filter(r => {
+            if (r.analysis?.classification?.isComplaint) return true;
+            const score = extractNPSScore(r);
+            const rating = extractRating(r);
+            return (score !== null && score <= 6) || (rating !== null && rating <= 2);
+        });
+        
+        const praises = responses.filter(r => {
+            if (r.analysis?.classification?.isPraise) return true;
+            const score = extractNPSScore(r);
+            const rating = extractRating(r);
+            return (score !== null && score >= 9) || (rating !== null && rating >= 4);
+        });
+        
+        const urgent = responses.filter(r => {
+            if (r.analysis?.urgency === 'high') return true;
+            const score = extractNPSScore(r);
+            const rating = extractRating(r);
+            return (score !== null && score <= 3) || (rating !== null && rating <= 1);
+        });
+
+        // Build feedback categories from themes or infer from scores
+        const complaintCategories = {};
+        complaints.forEach((r, idx) => {
+            if (r.analysis?.themes?.length) {
+                r.analysis.themes.forEach(theme => {
+                    if (!complaintCategories[theme]) {
+                        complaintCategories[theme] = { count: 0, summaries: [] };
+                    }
+                    complaintCategories[theme].count++;
+                    complaintCategories[theme].summaries.push(r.analysis?.summary || r.review || '');
+                });
+            } else {
+                const category = 'Low Rating Feedback';
+                if (!complaintCategories[category]) {
+                    complaintCategories[category] = { count: 0, summaries: [] };
+                }
+                complaintCategories[category].count++;
+                complaintCategories[category].summaries.push(r.review || `Response with low score`);
+            }
+        });
+
+        const praiseCategories = {};
+        praises.forEach(r => {
+            if (r.analysis?.themes?.length) {
+                r.analysis.themes.forEach(theme => {
+                    if (!praiseCategories[theme]) {
+                        praiseCategories[theme] = { count: 0, summaries: [] };
+                    }
+                    praiseCategories[theme].count++;
+                    praiseCategories[theme].summaries.push(r.analysis?.summary || r.review || '');
+                });
+            } else {
+                const category = 'Positive Feedback';
+                if (!praiseCategories[category]) {
+                    praiseCategories[category] = { count: 0, summaries: [] };
+                }
+                praiseCategories[category].count++;
+                praiseCategories[category].summaries.push(r.review || `Response with high score`);
+            }
+        });
+
+        const topComplaints = Object.entries(complaintCategories)
+            .sort((a, b) => b[1].count - a[1].count)
+            .slice(0, 5)
+            .map(([category, data], idx) => ({
+                category,
+                count: data.count,
+                description: data.summaries[0] || `Issues related to ${category}`,
+                severity: Math.min(100, Math.round((data.count / Math.max(complaints.length, 1)) * 100) + (5 - idx) * 10)
+            }));
+
+        const topPraises = Object.entries(praiseCategories)
+            .sort((a, b) => b[1].count - a[1].count)
+            .slice(0, 5)
+            .map(([category, data], idx) => ({
+                category,
+                count: data.count,
+                description: data.summaries[0] || `Appreciation for ${category}`,
+                impact: Math.min(100, Math.round((data.count / Math.max(praises.length, 1)) * 100) + (5 - idx) * 10)
+            }));
+
+        const urgentIssues = urgent.slice(0, 5).map(r => ({
+            title: r.analysis?.themes?.[0] || 'Urgent Issue',
+            description: r.analysis?.summary || r.review || 'Requires immediate attention',
+            priority: 'High',
+            responseId: r._id,
+            createdAt: r.createdAt
+        }));
+
+        const actionableInsights = [];
+        if (topComplaints.length > 0) {
+            topComplaints.slice(0, 3).forEach(c => {
+                actionableInsights.push({
+                    title: `Address ${c.category} concerns`,
+                    recommendation: `${c.count} responses mentioned issues with ${c.category}. Consider reviewing this area.`,
+                    impact: 'High'
+                });
+            });
+        }
+        if (topPraises.length > 0) {
+            topPraises.slice(0, 2).forEach(p => {
+                actionableInsights.push({
+                    title: `Leverage ${p.category} strength`,
+                    recommendation: `${p.count} responses praised ${p.category}. This is a key differentiator.`,
+                    impact: 'Medium'
+                });
+            });
+        }
+
+        // ============================================================================
+        // COMPILE FINAL RESPONSE
+        // ============================================================================
+        
+        const analytics = {
+            overview: {
+                totalResponses,
+                averageRating,
+                completionRate,
+                npsScore: npsData.score !== null ? npsData.score : 0,
+                responseRate,
+                satisfactionScore,
+                avgCompletionTime,
+                benchmarkComparison: 0
+            },
+            
+            nps: {
+                score: npsData.score !== null ? npsData.score : 0,
+                promoters: npsData.promoters || 0,
+                passives: npsData.passives || 0,
+                detractors: npsData.detractors || 0,
+                trend: npsTrend,
+                distribution: {
+                    promoters: npsData.totalResponses > 0 
+                        ? Number(((npsData.promoters / npsData.totalResponses) * 100).toFixed(1)) 
+                        : 0,
+                    passives: npsData.totalResponses > 0 
+                        ? Number(((npsData.passives / npsData.totalResponses) * 100).toFixed(1)) 
+                        : 0,
+                    detractors: npsData.totalResponses > 0 
+                        ? Number(((npsData.detractors / npsData.totalResponses) * 100).toFixed(1)) 
+                        : 0
+                }
+            },
+            
+            trends: {
+                responsesByDate: responsesByDateArray,
+                ratingTrends,
+                completionTrends,
+                npsHistory,
+                responseTrend,
+                ratingTrend,
+                completionTrend,
+                satisfactionTrend: ratingTrend
+            },
+            
+            demographics: {
+                byDevice,
+                byLocation,
+                byTimeOfDay,
+                byDayOfWeek
+            },
+            
+            sentiment: {
+                breakdown: sentimentCounts,
+                percentages: {
+                    positive: totalResponses > 0 
+                        ? Number(((sentimentCounts.positive / totalResponses) * 100).toFixed(1)) 
+                        : 0,
+                    neutral: totalResponses > 0 
+                        ? Number(((sentimentCounts.neutral / totalResponses) * 100).toFixed(1)) 
+                        : 0,
+                    negative: totalResponses > 0 
+                        ? Number(((sentimentCounts.negative / totalResponses) * 100).toFixed(1)) 
+                        : 0
+                },
+                topKeywords,
+                emotionalTrends: [],
+                satisfactionDrivers: topThemes
+            },
+            
+            questions: {
+                performance: questionPerformance,
+                dropoffPoints,
+                timeSpent: questionPerformance.map(q => ({
+                    questionNumber: q.questionNumber,
+                    averageTime: 0,
+                    minTime: 0,
+                    maxTime: 0,
+                    medianTime: 0
+                })),
+                skipRates: questionPerformance.map(q => ({
+                    questionId: q.questionNumber,
+                    skipRate: q.skipRate
+                }))
+            },
+            
+            feedback: {
+                topComplaints,
+                topPraises,
+                urgentIssues,
+                actionableInsights
+            },
+            
+            surveyInfo: {
+                id: survey._id,
+                title: survey.title,
+                description: survey.description,
+                status: survey.status,
+                createdAt: survey.createdAt
+            },
+            generatedAt: new Date(),
+            dateRange: {
+                start: rangeStart,
+                end: rangeEnd,
+                days
+            }
+        };
+
+        await Logger.info("✅ Comprehensive survey analytics fetched successfully", {
             surveyId,
-            totalResponses
+            totalResponses,
+            npsScore: npsData.score,
+            avgRating: averageRating
         });
 
         res.status(200).json(analytics);
+        
     } catch (err) {
-        await Logger.error("💥 Error fetching survey analytics", {
+        await Logger.error("💥 Error fetching comprehensive survey analytics", {
             error: err.message,
             stack: err.stack
         });

@@ -3,7 +3,7 @@
 const mongoose = require("mongoose");
 
 const answerSchema = new mongoose.Schema({
-  questionId: { type: mongoose.Schema.Types.ObjectId, required: true },
+  questionId: { type: String, required: true },  // Changed from ObjectId to String
   answer: mongoose.Schema.Types.Mixed, // string, number, etc.
   media: [
     {
@@ -98,9 +98,19 @@ const surveyResponseSchema = new mongoose.Schema(
     // Analysis metadata (populated by postResponseProcessor)
     // Client Requirement 2: Response-Level Content Analysis
     analysis: analysisSchema,
+
+    // NEW: Metadata for analytics demographics
+    metadata: {
+      device: { type: String, enum: ["desktop", "mobile", "tablet"], default: null },
+      browser: { type: String, default: null },  // Chrome, Firefox, Safari, Edge
+      os: { type: String, default: null },       // Windows, macOS, iOS, Android
+      location: { type: String, default: null }, // Country or City
+      userAgent: { type: String, default: null } // Raw user agent string
+    },
     
-    // Completion metrics
-    completionTime: { type: Number }, // time in seconds to complete survey
+    // Time tracking
+    startedAt: { type: Date },
+    completionTime: { type: Number }, // already exists, ensure it's populated
   },
   { timestamps: true }
 );

@@ -13,6 +13,7 @@ exports.submitAnonymousResponse = async (req, res, next) => {
       surveyId: req.params.surveyId,
       payload: value,
       ip: req.ip,
+      userAgent: req.headers['user-agent'] || '',  // NEW: Pass user agent
     });
 
     res.status(201).json({

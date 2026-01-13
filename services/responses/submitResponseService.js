@@ -6,6 +6,38 @@ const { onSurveyResponse } = require("../contact/contactSurveySync.service");
 const Logger = require("../../utils/auditLog");
 
 /**
+ * Parse user agent to extract device, browser, and OS info
+ */
+function parseUserAgent(userAgent) {
+  const ua = (userAgent || '').toLowerCase();
+  
+  // Detect device
+  let device = 'desktop';
+  if (/mobile|android|iphone|ipod/i.test(ua)) {
+    device = 'mobile';
+  } else if (/ipad|tablet/i.test(ua)) {
+    device = 'tablet';
+  }
+  
+  // Detect browser
+  let browser = 'unknown';
+  if (ua.includes('edg')) browser = 'Edge';
+  else if (ua.includes('chrome')) browser = 'Chrome';
+  else if (ua.includes('firefox')) browser = 'Firefox';
+  else if (ua.includes('safari')) browser = 'Safari';
+  
+  // Detect OS
+  let os = 'unknown';
+  if (ua.includes('windows')) os = 'Windows';
+  else if (ua.includes('mac os') || ua.includes('macos')) os = 'macOS';
+  else if (ua.includes('android')) os = 'Android';
+  else if (ua.includes('iphone') || ua.includes('ipad') || ua.includes('ios')) os = 'iOS';
+  else if (ua.includes('linux')) os = 'Linux';
+  
+  return { device, browser, os, userAgent };
+}
+
+/**
  * Extract NPS and rating from answers based on question types
  */
 function extractMetricsFromAnswers(answers, survey) {
@@ -94,7 +126,8 @@ exports.submitSurveyResponseService = async ({
   token,
   payload,
   ip,
-  user
+  user,
+  userAgent  // NEW: Accept userAgent from controller
 }) => {
   console.log(`\n${'*'.repeat(60)}`);
   console.log(`📨 [InvitedResponse] NEW SUBMISSION`);
@@ -173,12 +206,15 @@ exports.submitSurveyResponseService = async ({
     }
   }
 
+  // Extract metadata from user agent
+  const metadata = parseUserAgent(userAgent);
+  console.log(`   📱 Device: ${metadata.device}, Browser: ${metadata.browser}, OS: ${metadata.os}`);
+
   // 2️⃣ Save response
   console.log(`\n💾 [Step 2] Creating response record...`);
   const response = await SurveyResponse.create({
     survey: invite.survey._id,
     tenant: invite.tenant,
-    // 🔥 Link to contact for non-anonymous invited responses
     contact: payload.isAnonymous ? null : contactId,
     user: user?._id || null,
     createdBy: user?._id,
@@ -187,7 +223,10 @@ exports.submitSurveyResponseService = async ({
     rating: rating,
     score: score,
     isAnonymous: payload.isAnonymous,
-    ip
+    ip,
+    metadata,  // Now properly defined
+    completionTime: payload.completionTime || null,  // Changed from body to payload
+    startedAt: payload.startedAt || null  // Changed from body to payload
   });
   console.log(`   ✅ Response created: ${response._id}`);
   if (rating !== undefined) console.log(`   Rating saved: ${rating}`);

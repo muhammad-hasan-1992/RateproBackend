@@ -2,15 +2,13 @@
 const express = require("express");
 const router = express.Router();
 
-// Legacy controller imports
-const {
-  getSurveyStats,
-  getTenantStats,
-  getExecutiveDashboard,
-  getOperationalDashboard,
-  getTrendsAnalytics,
-  getAlerts
-} = require("../controllers/analyticsController");
+// Dashboard controller imports (refactored)
+const { getSurveyStats } = require("../controllers/analytics/dashboard/getSurveyStats.controller");
+const { getTenantStats } = require("../controllers/analytics/dashboard/getTenantStats.controller");
+const { getExecutiveDashboard } = require("../controllers/analytics/dashboard/executiveDashboard.controller");
+const { getOperationalDashboard } = require("../controllers/analytics/dashboard/operationalDashboard.controller");
+const { getTrendsAnalytics } = require("../controllers/analytics/dashboard/trendsDashboard.controller");
+const { getAlerts } = require("../controllers/analytics/dashboard/alerts.controller");
 
 // New modular controller imports
 const sentimentController = require("../controllers/analytics/sentiment.controller");
@@ -21,6 +19,7 @@ const { getAnalytics } = require("../controllers/analytics/getAnalytics.controll
 
 const { protect } = require("../middlewares/authMiddleware");
 const { setTenantId } = require("../middlewares/tenantMiddleware");
+
 
 // Apply authentication and tenant middleware to all routes
 router.use(protect);

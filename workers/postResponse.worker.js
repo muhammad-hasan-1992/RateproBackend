@@ -12,11 +12,15 @@ if (process.env.ENABLE_QUEUES !== "true") {
   return;
 }
 
+console.log("🚀 PostResponse Worker STARTED");
+
 // ✅ Worker initialization (ONLY if queues enabled)
 const worker = new Worker(
   POST_RESPONSE_QUEUE,
   async (job) => {
+    console.log("📥 Job picked from queue:", job.name, job.id);
     await processPostSurveyResponse(job.data);
+    console.log("✅ Job processed:", job.id);
   },
   {
     connection: redis,

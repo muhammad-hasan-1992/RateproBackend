@@ -11,7 +11,13 @@ const router = express.Router();
 const { protect } = require("../middlewares/authMiddleware");
 const { allowRoles } = require("../middlewares/roleMiddleware");
 const { setTenantId } = require("../middlewares/tenantMiddleware");
-const { analyzeFeedback, generateActions, followUp } = require("../controllers/feedbackController");
+
+// ============================================================================
+// MODULAR CONTROLLERS (Clean Architecture)
+// ============================================================================
+const { analyzeFeedback } = require("../controllers/feedback/analyzeFeedback.controller");
+const { generateActions } = require("../controllers/feedback/generateActions.controller");
+const { followUp } = require("../controllers/feedback/followUp.controller");
 
 // Deprecation warning middleware
 const deprecationWarning = (req, res, next) => {

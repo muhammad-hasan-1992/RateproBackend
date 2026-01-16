@@ -26,6 +26,18 @@ const setAudience = require("../controllers/survey/setAudience.controller");
 // QR Code Controllers
 const { getAnonymousSurveyQRCode } = require("../controllers/survey/getAnonymousSurveyQRCode.controller");
 const { getInviteQRCode } = require("../controllers/survey/getInviteQRCode.controller");
+const { getSurveyQRCode } = require("../controllers/survey/getSurveyQRCode.controller");
+
+// Public Survey Controllers
+const { getPublicSurveys } = require("../controllers/survey/getPublicSurveys.controller");
+const { getPublicSurveyById } = require("../controllers/survey/getPublicSurveyById.controller");
+
+// Survey Response & Export Controllers
+const { getSurveyResponses } = require("../controllers/survey/getSurveyResponses.controller");
+const { exportSurveyReport } = require("../controllers/survey/exportSurveyReport.controller");
+const { exportResponses } = require("../controllers/survey/exportResponses.controller");
+const { verifySurveyPassword } = require("../controllers/survey/verifySurveyPassword.controller");
+const { createQuestion, deleteQuestion } = require("../controllers/survey/questions.controller");
 
 // Response Controllers (Public/Invited)
 const { verifyInviteToken } = require("../controllers/responses/verifyToken.controller");
@@ -39,19 +51,13 @@ const { getAnalytics } = require("../controllers/analytics/getAnalytics.controll
 // LEGACY CONTROLLERS (To be migrated - Used where modular not available)
 // ============================================================================
 const {
-  getPublicSurveys,
-  getPublicSurveyById,
-  getSurveyQRCode,
-  exportSurveyReport,
-  getSurveyResponses,
   getSurveyAnalytics,
 } = require("../controllers/surveyController");
 
-const {
-  analyzeFeedback,
-  generateActions,
-  followUp,
-} = require("../controllers/feedbackController");
+// Feedback Controllers (Modular)
+const { analyzeFeedback } = require("../controllers/feedback/analyzeFeedback.controller");
+const { generateActions } = require("../controllers/feedback/generateActions.controller");
+const { followUp } = require("../controllers/feedback/followUp.controller");
 
 const {
   getExecutiveDashboard,
@@ -262,7 +268,7 @@ router.get(
   tenantCheck,
   allowRoles("admin", "companyAdmin"),
   allowPermission("survey:report:view"),
-  exportSurveyReport  // TODO: Migrate to modular controller
+  exportSurveyReport
 );
 
 

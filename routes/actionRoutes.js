@@ -4,19 +4,21 @@ const router = express.Router();
 const { protect } = require("../middlewares/authMiddleware");
 const { setTenantId, tenantCheck } = require("../middlewares/tenantMiddleware");
 const { allowRoles } = require("../middlewares/roleMiddleware");
-const {
-  createAction,
-  getActions,
-  getActionById,
-  updateAction,
-  deleteAction,
-  assignAction,
-  getActionsByPriority,
-  getActionsByStatus,
-  getActionsAnalytics,
-  bulkUpdateActions,
-  generateActionsFromFeedback
-} = require("../controllers/actionController");
+
+// ============================================================================
+// MODULAR CONTROLLERS (Clean Architecture)
+// ============================================================================
+const { createAction } = require("../controllers/action/createAction.controller");
+const { getActions } = require("../controllers/action/getActions.controller");
+const { getActionById } = require("../controllers/action/getActionById.controller");
+const { updateAction } = require("../controllers/action/updateAction.controller");
+const { deleteAction } = require("../controllers/action/deleteAction.controller");
+const { assignAction } = require("../controllers/action/assignAction.controller");
+const { getActionsByPriority } = require("../controllers/action/getActionsByPriority.controller");
+const { getActionsByStatus } = require("../controllers/action/getActionsByStatus.controller");
+const { getActionsAnalytics } = require("../controllers/action/getActionsAnalytics.controller");
+const { bulkUpdateActions } = require("../controllers/action/bulkUpdateActions.controller");
+const { generateActionsFromFeedback } = require("../controllers/action/generateActionsFromFeedback.controller");
 
 // Middleware to protect all routes
 router.use(protect);

@@ -15,7 +15,9 @@ const { recomputeAudienceIntelligence } = require("./jobs/audience/recomputeAudi
 const { enableNotificationsForAllTenants } = require("./scripts/enableNotifications.js");
 
 // Event listeners for response processing pipeline
-require("./workers/responseProcessor.worker");
+// require("./workers/responseProcessor.worker");
+require("./workers/responseProcessor.worker");   // Event-based processing
+require("./workers/postResponse.worker");        // ← ADD THIS: BullMQ queue processing
 require("./utils/events/contactSyncListeners");
 
 // MongoDB connection and seeding

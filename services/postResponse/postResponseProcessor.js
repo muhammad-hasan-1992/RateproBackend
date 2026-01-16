@@ -7,7 +7,7 @@
  * - No manual action required from administrators
  * - Every submitted response treated as a business signal
  */
-const mongoose = require("mongoose"); 
+const mongoose = require("mongoose");
 const analyticsService = require("../analytics/analyticsService");
 const aiInsightService = require("../ai/aiInsightService");
 const autoActionService = require("../actions/autoActionService");
@@ -24,7 +24,7 @@ exports.processPostSurveyResponse = async ({
 }) => {
   const responseId = response?._id || response?.id || 'unknown';
   const surveyId = survey?._id || survey?.id || 'unknown';
-  
+
   console.log(`\n${'─'.repeat(60)}`);
   console.log(`🔄 [PostResponseProcessor] STARTED`);
   console.log(`   Response ID: ${responseId}`);
@@ -103,7 +103,7 @@ exports.processPostSurveyResponse = async ({
     // - Positive feedback contributes to recognition tracking
     // ============================================================
     console.log(`\n⚡ [Step 5/6] Evaluating action rules...`);
-    
+
     // Combine AI insight with metrics for comprehensive evaluation
     const combinedInsight = {
       ...insight,
@@ -128,7 +128,7 @@ exports.processPostSurveyResponse = async ({
     // Evaluate rules and create action if needed
     const triggeredRules = autoActionService.evaluateRules(combinedInsight, response);
     console.log(`   Rules triggered: ${triggeredRules.length}`);
-    
+
     if (triggeredRules.length > 0 || combinedInsight.shouldGenerateAction) {
       console.log(`   → Creating action from insight...`);
       const action = await autoActionService.createActionFromInsight({
@@ -137,7 +137,7 @@ exports.processPostSurveyResponse = async ({
         survey,
         tenantId
       });
-      
+
       if (action) {
         console.log(`   ✅ Action created: ${action._id}`);
         console.log(`   Priority: ${action.priority}`);
@@ -148,7 +148,7 @@ exports.processPostSurveyResponse = async ({
         // Client Requirement 7: Alert Generation & Monitoring
         // ============================================================
         console.log(`\n🔔 [Step 6/6] Checking notifications...`);
-        if (action.priority === "high") {
+        if (action.priority === "high" || action.priority === "medium") {
           console.log(`   → Sending urgent notification...`);
           notificationService.notifyUrgentAction(action)
             .then(() => console.log(`   ✅ Notification sent`))
@@ -178,7 +178,7 @@ exports.processPostSurveyResponse = async ({
         insight: combinedInsight,
         metrics
       });
-      
+
       if (incentiveResult.eligible) {
         console.log(`   🎉 Eligible for: ${incentiveResult.rewards.join(', ')}`);
       } else {
@@ -193,19 +193,19 @@ exports.processPostSurveyResponse = async ({
     // Client Requirement 5 & 8.2: Repeated complaints + Alert on rating drop
     // ============================================================
     console.log(`\n🔍 Checking for repeated complaint patterns & spikes...`);
-    
+
     // Check repeated complaints
     const repeatedAlerts = await autoActionService.checkRepeatedComplaints(tenantId, {
       hours: 24,
       threshold: 3
     });
-    
+
     if (repeatedAlerts.length > 0) {
       console.log(`   ⚠️ Found ${repeatedAlerts.length} repeated complaint patterns`);
       repeatedAlerts.forEach(alert => {
         console.log(`   - ${alert.category}: ${alert.count} issues (${alert.severity})`);
       });
-      
+
       // Create alert notification for spikes
       // Client Requirement 8.2: Notify manager on spikes
       for (const alert of repeatedAlerts) {
@@ -326,7 +326,7 @@ function processQuantitativeMetrics(response, survey) {
   for (const ans of answers) {
     const questionId = ans.questionId?.toString();
     const question = questionMap.get(questionId);
-    
+
     if (!question) {
       // Try to infer from answer value if question not found
       const ansValue = parseAnswerValue(ans.answer);
@@ -348,7 +348,7 @@ function processQuantitativeMetrics(response, survey) {
           metrics.npsScore = Math.min(10, Math.max(0, ansValue));
         }
         break;
-        
+
       case 'rating':
       case 'scale':
       case 'likert':
@@ -358,7 +358,7 @@ function processQuantitativeMetrics(response, survey) {
           metrics.rating = ansValue;
         }
         break;
-        
+
       case 'numeric':
         // Could be rating or other numeric input
         if (ansValue >= 0 && ansValue <= 10) {
@@ -380,8 +380,8 @@ function processQuantitativeMetrics(response, survey) {
 
     // Normalize to 0-100 scale
     metrics.normalizedScore = npsService.normalizeScore(
-      metrics.npsScore, 
-      { min: 0, max: 10 }, 
+      metrics.npsScore,
+      { min: 0, max: 10 },
       { min: 0, max: 100 }
     );
   }
@@ -406,22 +406,22 @@ function processQuantitativeMetrics(response, survey) {
  */
 function parseAnswerValue(answer) {
   if (answer === null || answer === undefined) return null;
-  
+
   // Already a number
   if (typeof answer === 'number') {
     return answer;
   }
-  
+
   // String that's a number
   if (typeof answer === 'string') {
     const trimmed = answer.trim();
-    
+
     // Direct number parsing
     const parsed = parseFloat(trimmed);
     if (!isNaN(parsed)) {
       return parsed;
     }
-    
+
     // Common NPS text mappings
     const npsTextMap = {
       'not at all likely': 0,
@@ -434,12 +434,12 @@ function parseAnswerValue(answer) {
       'very likely': 9,
       'extremely likely': 10
     };
-    
+
     const lowerAnswer = trimmed.toLowerCase();
     if (npsTextMap.hasOwnProperty(lowerAnswer)) {
       return npsTextMap[lowerAnswer];
     }
-    
+
     // Common rating text mappings
     const ratingTextMap = {
       'very poor': 1,
@@ -450,12 +450,12 @@ function parseAnswerValue(answer) {
       'very good': 5,
       'excellent': 5
     };
-    
+
     if (ratingTextMap.hasOwnProperty(lowerAnswer)) {
       return ratingTextMap[lowerAnswer];
     }
   }
-  
+
   return null;
 }
 
@@ -502,33 +502,33 @@ async function enrichResponseWithMetadata(responseId, insight, metrics) {
  */
 async function checkIncentiveEligibility({ response, survey, tenantId, insight, metrics }) {
   const rewards = [];
-  
+
   // Rule: Completed survey
   rewards.push("survey_completion_points");
-  
+
   // Rule: NPS Promoter (score 9-10)
   if (metrics.npsScore !== null && metrics.npsScore >= 9) {
     rewards.push("promoter_bonus");
   }
-  
+
   // Rule: High rating (4-5)
   if (metrics.rating !== null && metrics.rating >= 4) {
     rewards.push("high_rating_reward");
   }
-  
+
   // Rule: Valuable detailed comment (length > 100 chars)
   const reviewLength = response.review?.length || 0;
-  const hasDetailedFeedback = reviewLength > 100 || 
+  const hasDetailedFeedback = reviewLength > 100 ||
     (insight.keywords?.length >= 5) ||
     (insight.themes?.length >= 3);
-  
+
   if (hasDetailedFeedback) {
     rewards.push("detailed_feedback_bonus");
   }
-  
+
   // TODO: Check first-time respondent (requires Contact lookup)
   // TODO: Check 5-survey streak (requires response history)
-  
+
   // For now, just log - actual reward creation would be a separate service
   if (rewards.length > 0) {
     Logger.info("incentive", "Incentive eligibility checked", {
@@ -540,7 +540,7 @@ async function checkIncentiveEligibility({ response, survey, tenantId, insight, 
       }
     });
   }
-  
+
   return {
     eligible: rewards.length > 0,
     rewards
@@ -559,7 +559,7 @@ async function checkRatingDrop(surveyId, tenantId, currentMetrics) {
 
     // Get average from last 7 days
     const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-    
+
     const baseline = await SurveyResponse.aggregate([
       {
         $match: {

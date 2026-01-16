@@ -46,7 +46,7 @@ try {
   // ioredis connection string ko direct support karta hai
   redis = new Redis(redisConnectionString, {
     lazyConnect: true,
-    maxRetriesPerRequest: 1,
+    maxRetriesPerRequest: null,
     // Render/Production ke liye ye settings behtar hain
     reconnectOnError: (err) => {
       const targetError = "READONLY";

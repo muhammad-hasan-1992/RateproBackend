@@ -17,9 +17,9 @@ const mongoose = require("mongoose");
  */
 exports.getSurveyResponses = asyncHandler(async (req, res) => {
   const { surveyId } = req.params;
-  const { 
-    page = 1, 
-    limit = 20, 
+  const {
+    page = 1,
+    limit = 20,
     sortBy = "createdAt",
     sortOrder = "desc",
     sentiment,
@@ -54,22 +54,17 @@ exports.getSurveyResponses = asyncHandler(async (req, res) => {
     SurveyResponse.countDocuments(query)
   ]);
 
-  // Enrich with sentiment analysis
-  const enrichedResponses = await Promise.all(
-    responses.map(async (response) => {
-      const analysis = await sentimentService.analyzeResponseSentiment(response);
-      return {
-        ...response,
-        analysis: {
-          sentiment: analysis.sentiment,
-          sentimentScore: analysis.sentimentScore,
-          isComplaint: analysis.classification?.isComplaint,
-          isPraise: analysis.classification?.isPraise,
-          keywords: analysis.keywords?.slice(0, 5)
-        }
-      };
-    })
-  );
+  // Use stored analysis from post-response processing (no duplicate AI calls)
+  const enrichedResponses = responses.map((response) => ({
+    ...response,
+    analysis: response.analysis ? {
+      sentiment: response.analysis.sentiment,
+      sentimentScore: response.analysis.sentimentScore,
+      isComplaint: response.analysis.classification?.isComplaint,
+      isPraise: response.analysis.classification?.isPraise,
+      keywords: response.analysis.keywords?.slice(0, 5)
+    } : null
+  }));
 
   // Filter by sentiment if requested (post-analysis filter)
   const filteredResponses = sentiment
@@ -125,16 +120,16 @@ exports.getResponseDetail = asyncHandler(async (req, res) => {
     });
   }
 
-  // Full sentiment analysis
-  const analysis = await sentimentService.analyzeResponseSentiment(response);
+  // Use stored analysis from post-response processing (no duplicate AI calls)
+  const analysis = response.analysis || {};
 
   // NPS classification
-  const npsCategory = response.score !== undefined 
+  const npsCategory = response.score !== undefined
     ? (response.score >= 9 ? "promoter" : response.score <= 6 ? "detractor" : "passive")
     : null;
 
   // Rating category
-  const ratingCategory = response.rating 
+  const ratingCategory = response.rating
     ? npsService.categorizeRating(response.rating)
     : null;
 
@@ -210,28 +205,28 @@ exports.getResponseBreakdown = asyncHandler(async (req, res) => {
   const tenantId = req.tenantId || req.user?.tenant;
 
   const [anonymous, identified, total] = await Promise.all([
-    SurveyResponse.countDocuments({ 
-      survey: new mongoose.Types.ObjectId(surveyId), 
-      isAnonymous: true 
+    SurveyResponse.countDocuments({
+      survey: new mongoose.Types.ObjectId(surveyId),
+      isAnonymous: true
     }),
-    SurveyResponse.countDocuments({ 
-      survey: new mongoose.Types.ObjectId(surveyId), 
-      isAnonymous: false 
+    SurveyResponse.countDocuments({
+      survey: new mongoose.Types.ObjectId(surveyId),
+      isAnonymous: false
     }),
-    SurveyResponse.countDocuments({ 
-      survey: new mongoose.Types.ObjectId(surveyId) 
+    SurveyResponse.countDocuments({
+      survey: new mongoose.Types.ObjectId(surveyId)
     })
   ]);
 
   // Get sentiment breakdown for each type
   const [anonymousResponses, identifiedResponses] = await Promise.all([
-    SurveyResponse.find({ 
-      survey: new mongoose.Types.ObjectId(surveyId), 
-      isAnonymous: true 
+    SurveyResponse.find({
+      survey: new mongoose.Types.ObjectId(surveyId),
+      isAnonymous: true
     }).limit(50).lean(),
-    SurveyResponse.find({ 
-      survey: new mongoose.Types.ObjectId(surveyId), 
-      isAnonymous: false 
+    SurveyResponse.find({
+      survey: new mongoose.Types.ObjectId(surveyId),
+      isAnonymous: false
     }).limit(50).lean()
   ]);
 
@@ -255,7 +250,7 @@ exports.getResponseBreakdown = asyncHandler(async (req, res) => {
       nps: identifiedNPS.score,
       avgRating: identifiedCSI.averageRating
     },
-    insight: anonymous > identified 
+    insight: anonymous > identified
       ? "Most responses are anonymous - consider incentives for identified feedback"
       : "Good mix of identified respondents for CRM enrichment"
   };
@@ -367,27 +362,22 @@ exports.getFlaggedResponses = asyncHandler(async (req, res) => {
     .limit(parseInt(limit))
     .lean();
 
-  // Enrich with analysis
-  const enriched = await Promise.all(
-    flaggedResponses.map(async (response) => {
-      const analysis = await sentimentService.analyzeResponseSentiment(response);
-      return {
-        responseId: response._id,
-        surveyId: response.survey,
-        surveyTitle: surveyMap[response.survey?.toString()],
-        submittedAt: response.createdAt,
-        isAnonymous: response.isAnonymous,
-        respondent: response.isAnonymous ? null : response.user?.email,
-        rating: response.rating,
-        npsScore: response.score,
-        review: response.review?.substring(0, 200),
-        flagReason: response.rating <= 2 ? "Low Rating" : "Low NPS",
-        sentiment: analysis.sentiment,
-        isComplaint: analysis.classification?.isComplaint,
-        summary: analysis.summary
-      };
-    })
-  );
+  // Use stored analysis from post-response processing (no duplicate AI calls)
+  const enriched = flaggedResponses.map((response) => ({
+    responseId: response._id,
+    surveyId: response.survey,
+    surveyTitle: surveyMap[response.survey?.toString()],
+    submittedAt: response.createdAt,
+    isAnonymous: response.isAnonymous,
+    respondent: response.isAnonymous ? null : response.user?.email,
+    rating: response.rating,
+    npsScore: response.score,
+    review: response.review?.substring(0, 200),
+    flagReason: response.rating <= 2 ? "Low Rating" : "Low NPS",
+    sentiment: response.analysis?.sentiment,
+    isComplaint: response.analysis?.classification?.isComplaint,
+    summary: response.analysis?.summary
+  }));
 
   Logger.info("getFlaggedResponses", "Flagged responses fetched", {
     context: {

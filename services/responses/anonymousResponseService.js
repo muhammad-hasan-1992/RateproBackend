@@ -4,32 +4,60 @@ const SurveyResponse = require("../../models/SurveyResponse");
 const { postResponseQueue } = require("../../queues/postResponse.queue");
 const { onSurveyResponse } = require("../contact/contactSurveySync.service");
 const Logger = require("../../utils/auditLog");
+const geoip = require("geoip-lite");
 
-// Helper function to parse user agent - MUST BE AT TOP
+/**
+ * Extract metadata from user agent and IP address
+ * @param {string} userAgent - User agent string
+ * @param {string} ip - IP address for geolocation
+ * @returns {Object} Metadata including device, browser, os, location
+ */
+function getRequestMetadata(userAgent, ip) {
+    const ua = (userAgent || '').toLowerCase();
+
+    // Parse device type
+    let device = 'desktop';
+    if (/mobile|android|iphone|ipod/i.test(ua)) {
+        device = 'mobile';
+    } else if (/ipad|tablet/i.test(ua)) {
+        device = 'tablet';
+    }
+
+    // Parse browser
+    let browser = 'unknown';
+    if (ua.includes('edg')) browser = 'Edge';
+    else if (ua.includes('chrome')) browser = 'Chrome';
+    else if (ua.includes('firefox')) browser = 'Firefox';
+    else if (ua.includes('safari')) browser = 'Safari';
+
+    // Parse OS
+    let os = 'unknown';
+    if (ua.includes('windows')) os = 'Windows';
+    else if (ua.includes('mac os') || ua.includes('macos')) os = 'macOS';
+    else if (ua.includes('android')) os = 'Android';
+    else if (ua.includes('iphone') || ua.includes('ipad') || ua.includes('ios')) os = 'iOS';
+    else if (ua.includes('linux')) os = 'Linux';
+
+    // Get location from IP using geoip-lite
+    let location = null;
+    if (ip) {
+        // Clean IP (remove ::ffff: prefix for IPv4-mapped IPv6)
+        const cleanIp = ip.replace(/^::ffff:/, '');
+        const geo = geoip.lookup(cleanIp);
+        if (geo) {
+            // Format: "City, Country" or just "Country" if no city
+            location = geo.city
+                ? `${geo.city}, ${geo.country}`
+                : geo.country;
+        }
+    }
+
+    return { device, browser, os, location, userAgent };
+}
+
+// Legacy alias for backward compatibility
 function parseUserAgent(userAgent) {
-  const ua = (userAgent || '').toLowerCase();
-  
-  let device = 'desktop';
-  if (/mobile|android|iphone|ipod/i.test(ua)) {
-    device = 'mobile';
-  } else if (/ipad|tablet/i.test(ua)) {
-    device = 'tablet';
-  }
-  
-  let browser = 'unknown';
-  if (ua.includes('edg')) browser = 'Edge';
-  else if (ua.includes('chrome')) browser = 'Chrome';
-  else if (ua.includes('firefox')) browser = 'Firefox';
-  else if (ua.includes('safari')) browser = 'Safari';
-  
-  let os = 'unknown';
-  if (ua.includes('windows')) os = 'Windows';
-  else if (ua.includes('mac os') || ua.includes('macos')) os = 'macOS';
-  else if (ua.includes('android')) os = 'Android';
-  else if (ua.includes('iphone') || ua.includes('ipad') || ua.includes('ios')) os = 'iOS';
-  else if (ua.includes('linux')) os = 'Linux';
-  
-  return { device, browser, os, userAgent };
+    return getRequestMetadata(userAgent, null);
 }
 
 exports.handleAnonymousResponse = async ({ surveyId, payload, ip, userAgent }) => {  // ADD userAgent
@@ -44,12 +72,13 @@ exports.handleAnonymousResponse = async ({ surveyId, payload, ip, userAgent }) =
     console.log(`   Email: ${payload?.email || 'N/A'}`);
     console.log(`${'*'.repeat(60)}`);
 
-    // NEW: Parse metadata from user agent
-    const metadata = parseUserAgent(userAgent);
-    console.log(`\n📱 [Metadata] Parsed from User-Agent:`);
+    // Parse metadata from user agent and IP
+    const metadata = getRequestMetadata(userAgent, ip);
+    console.log(`\n📱 [Metadata] Parsed:`);
     console.log(`   Device: ${metadata.device}`);
     console.log(`   Browser: ${metadata.browser}`);
     console.log(`   OS: ${metadata.os}`);
+    console.log(`   Location: ${metadata.location || 'Unknown'}`);
 
     console.log(`\n🔍 [Step 1] Looking up survey...`);
     const survey = await Survey.findOne({
@@ -64,17 +93,17 @@ exports.handleAnonymousResponse = async ({ surveyId, payload, ip, userAgent }) =
     }
     console.log(`   ✅ Survey found: "${survey.title}"`);
     console.log(`   Tenant: ${survey.tenant}`);
-    
+
     // NEW: Debug question IDs
     console.log(`\n📋 [Debug] Survey Question IDs:`);
     survey.questions?.forEach((q, i) => {
-        console.log(`   Q${i+1}: id="${q.id}", _id="${q._id}", type="${q.type}"`);
+        console.log(`   Q${i + 1}: id="${q.id}", _id="${q._id}", type="${q.type}"`);
     });
-    
+
     // NEW: Debug answer questionIds
     console.log(`\n📋 [Debug] Payload Answer QuestionIds:`);
     payload.answers?.forEach((a, i) => {
-        console.log(`   A${i+1}: questionId="${a.questionId}", answer="${String(a.answer).substring(0, 30)}..."`);
+        console.log(`   A${i + 1}: questionId="${a.questionId}", answer="${String(a.answer).substring(0, 30)}..."`);
     });
 
     console.log(`\n💾 [Step 2] Creating response record...`);
@@ -93,10 +122,10 @@ exports.handleAnonymousResponse = async ({ surveyId, payload, ip, userAgent }) =
         createdBy: null,
         user: null,
     };
-    
+
     console.log(`\n📋 [Debug] Response Data to Save:`);
     console.log(`   Metadata: ${JSON.stringify(responseData.metadata)}`);
-    
+
     const response = await SurveyResponse.create(responseData);
     console.log(`   ✅ Response created: ${response._id}`);
     console.log(`   Saved metadata: ${JSON.stringify(response.metadata)}`);
@@ -178,10 +207,10 @@ exports.submitAnonymousSurvey = async (surveyId, answers, req, reviewData = {}) 
         value: answer.value,
     }));
 
-    // NEW: Extract device/browser metadata from request
+    // Extract metadata from request including IP geolocation
     const userAgent = req.headers['user-agent'] || '';
-    const metadata = parseUserAgent(userAgent);
-    
+    const metadata = getRequestMetadata(userAgent, req.ip);
+
     const responseData = {
         survey: survey._id,
         tenant: survey.tenant,

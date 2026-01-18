@@ -4,24 +4,22 @@ const SurveyResponse = require("../../models/SurveyResponse");
 const Action = require("../../models/Action");
 const mongoose = require("mongoose");
 const Logger = require("../../utils/logger");
+const trendService = require("./trendService");
 
 /**
  * Calculate Customer Satisfaction Index (CSI) with breakdown by location and service
  */
 exports.calculateCustomerSatisfactionIndex = async (tenantId, startDate) => {
     try {
+        // Get all tenant surveys
+        const surveys = await Survey.find({ tenant: tenantId }).select("_id");
+        const surveyIds = surveys.map(s => s._id);
+
+        // Calculate overall satisfaction for current period
         const satisfactionAgg = await SurveyResponse.aggregate([
             {
-                $lookup: {
-                    from: "surveys",
-                    localField: "survey",
-                    foreignField: "_id",
-                    as: "surveyData"
-                }
-            },
-            {
                 $match: {
-                    "surveyData.tenant": new mongoose.Types.ObjectId(tenantId),
+                    survey: { $in: surveyIds },
                     createdAt: { $gte: startDate },
                     $or: [
                         { rating: { $exists: true, $ne: null } },
@@ -39,50 +37,76 @@ exports.calculateCustomerSatisfactionIndex = async (tenantId, startDate) => {
             }
         ]);
 
-        const overall =
-            satisfactionAgg.length > 0
-                ? (satisfactionAgg[0].avgRating || satisfactionAgg[0].avgScore / 2) || 4.0
-                : 4.0;
+        const overall = satisfactionAgg.length > 0
+            ? (satisfactionAgg[0].avgRating || (satisfactionAgg[0].avgScore / 2)) || 0
+            : 0;
 
-        const locations = [
-            {
-                name: "Main Office",
-                score: Math.min(5, overall + 0.3),
-                responses: Math.floor(Math.random() * 100) + 50
-            },
-            {
-                name: "Branch A",
-                score: Math.max(1, overall - 0.1),
-                responses: Math.floor(Math.random() * 80) + 30
-            },
-            {
-                name: "Branch B",
-                score: Math.max(1, overall - 0.3),
-                responses: Math.floor(Math.random() * 60) + 20
-            }
-        ];
+        // Calculate previous period for trend comparison
+        const periodDays = Math.round((new Date() - startDate) / (1000 * 60 * 60 * 24));
+        const previousStart = new Date(startDate);
+        previousStart.setDate(previousStart.getDate() - periodDays);
 
-        const services = [
+        const previousAgg = await SurveyResponse.aggregate([
             {
-                name: "Customer Service",
-                score: Math.min(5, overall + 0.2),
-                responses: Math.floor(Math.random() * 150) + 100
+                $match: {
+                    survey: { $in: surveyIds },
+                    createdAt: { $gte: previousStart, $lt: startDate },
+                    $or: [
+                        { rating: { $exists: true, $ne: null } },
+                        { score: { $exists: true, $ne: null } }
+                    ]
+                }
             },
             {
-                name: "Product Quality",
-                score: overall,
-                responses: Math.floor(Math.random() * 120) + 80
-            },
-            {
-                name: "Delivery",
-                score: Math.max(1, overall - 0.4),
-                responses: Math.floor(Math.random() * 100) + 60
+                $group: {
+                    _id: null,
+                    avgRating: { $avg: "$rating" },
+                    avgScore: { $avg: "$score" }
+                }
             }
-        ];
+        ]);
+
+        const previousOverall = previousAgg.length > 0
+            ? (previousAgg[0].avgRating || (previousAgg[0].avgScore / 2)) || 0
+            : 0;
+
+        // Calculate trend as difference between current and previous period
+        const trend = previousOverall > 0
+            ? Number(((overall - previousOverall) / previousOverall * 100).toFixed(1))
+            : 0;
+
+        // Aggregate CSI by location from metadata.location field
+        const locationAgg = await SurveyResponse.aggregate([
+            {
+                $match: {
+                    survey: { $in: surveyIds },
+                    createdAt: { $gte: startDate },
+                    "metadata.location": { $exists: true, $ne: null }
+                }
+            },
+            {
+                $group: {
+                    _id: "$metadata.location",
+                    avgRating: { $avg: "$rating" },
+                    count: { $sum: 1 }
+                }
+            },
+            { $sort: { count: -1 } },
+            { $limit: 10 }
+        ]);
+
+        const locations = locationAgg.map(loc => ({
+            name: loc._id || "Unknown",
+            score: Number((loc.avgRating || 0).toFixed(1)),
+            responses: loc.count
+        }));
+
+        // Services require service tagging - returning empty until implemented
+        const services = [];
 
         return {
-            overall: Math.round(overall * 10) / 10,
-            trend: Math.random() > 0.5 ? 0.3 : -0.2,
+            overall: Number(overall.toFixed(1)),
+            trend,
             locations,
             services
         };
@@ -91,7 +115,7 @@ exports.calculateCustomerSatisfactionIndex = async (tenantId, startDate) => {
             error,
             context: { tenantId, startDate }
         });
-        return { overall: 4.0, trend: 0, locations: [], services: [] };
+        return { overall: 0, trend: 0, locations: [], services: [] };
     }
 };
 
@@ -100,18 +124,15 @@ exports.calculateCustomerSatisfactionIndex = async (tenantId, startDate) => {
  */
 exports.calculateNPSScore = async (tenantId, startDate) => {
     try {
+        // Get all tenant surveys
+        const surveys = await Survey.find({ tenant: tenantId }).select("_id");
+        const surveyIds = surveys.map(s => s._id);
+
+        // Calculate NPS for current period
         const npsResponses = await SurveyResponse.aggregate([
             {
-                $lookup: {
-                    from: "surveys",
-                    localField: "survey",
-                    foreignField: "_id",
-                    as: "surveyData"
-                }
-            },
-            {
                 $match: {
-                    "surveyData.tenant": new mongoose.Types.ObjectId(tenantId),
+                    survey: { $in: surveyIds },
                     createdAt: { $gte: startDate },
                     score: { $exists: true, $gte: 0, $lte: 10 }
                 }
@@ -137,20 +158,51 @@ exports.calculateNPSScore = async (tenantId, startDate) => {
 
         if (npsResponses.length === 0) {
             return {
-                current: 42,
+                current: 0,
                 trend: 0,
-                promoters: 156,
-                detractors: 34,
-                passives: 98
+                promoters: 0,
+                detractors: 0,
+                passives: 0
             };
         }
 
         const { promoters, passives, detractors, total } = npsResponses[0];
         const npsScore = Math.round(((promoters - detractors) / total) * 100);
 
+        // Calculate previous period for trend
+        const periodDays = Math.round((new Date() - startDate) / (1000 * 60 * 60 * 24));
+        const previousStart = new Date(startDate);
+        previousStart.setDate(previousStart.getDate() - periodDays);
+
+        const previousNps = await SurveyResponse.aggregate([
+            {
+                $match: {
+                    survey: { $in: surveyIds },
+                    createdAt: { $gte: previousStart, $lt: startDate },
+                    score: { $exists: true, $gte: 0, $lte: 10 }
+                }
+            },
+            {
+                $group: {
+                    _id: null,
+                    promoters: { $sum: { $cond: [{ $gte: ["$score", 9] }, 1, 0] } },
+                    detractors: { $sum: { $cond: [{ $lt: ["$score", 7] }, 1, 0] } },
+                    total: { $sum: 1 }
+                }
+            }
+        ]);
+
+        let trend = 0;
+        if (previousNps.length > 0 && previousNps[0].total > 0) {
+            const prevNpsScore = Math.round(
+                ((previousNps[0].promoters - previousNps[0].detractors) / previousNps[0].total) * 100
+            );
+            trend = npsScore - prevNpsScore;
+        }
+
         return {
             current: npsScore,
-            trend: Math.floor(Math.random() * 10) - 5,
+            trend,
             promoters,
             passives,
             detractors
@@ -160,7 +212,7 @@ exports.calculateNPSScore = async (tenantId, startDate) => {
             error,
             context: { tenantId, startDate }
         });
-        return { current: 42, trend: 5, promoters: 156, detractors: 34, passives: 98 };
+        return { current: 0, trend: 0, promoters: 0, detractors: 0, passives: 0 };
     }
 };
 
@@ -235,7 +287,7 @@ exports.calculateSLAMetrics = async (tenantId, startDate) => {
         const actions = await Action.find({ tenant: tenantId, createdAt: { $gte: startDate } });
 
         if (actions.length === 0) {
-            return { averageResponseTime: "2.4 hours", onTimeResolution: 87, overdueActions: 0 };
+            return { averageResponseTime: "N/A", onTimeResolution: 0, overdueActions: 0 };
         }
 
         const now = new Date();
@@ -251,12 +303,33 @@ exports.calculateSLAMetrics = async (tenantId, startDate) => {
         const onTimeResolution =
             resolvedActions.length > 0
                 ? Math.round((onTimeResolved / resolvedActions.length) * 100)
-                : 87;
+                : 0;
 
-        const avgResponseHours = Math.random() * 4 + 1;
+        // Calculate real average response time from createdAt to resolvedAt/completedAt
+        const actionsWithResolutionTime = resolvedActions.filter(
+            (action) => action.completedAt || action.resolvedAt
+        );
+
+        let averageResponseTime = "N/A";
+        if (actionsWithResolutionTime.length > 0) {
+            const totalHours = actionsWithResolutionTime.reduce((sum, action) => {
+                const resolvedAt = action.completedAt || action.resolvedAt;
+                const diffMs = resolvedAt - action.createdAt;
+                return sum + (diffMs / (1000 * 60 * 60)); // Convert to hours
+            }, 0);
+            const avgHours = totalHours / actionsWithResolutionTime.length;
+
+            if (avgHours < 1) {
+                averageResponseTime = `${Math.round(avgHours * 60)} mins`;
+            } else if (avgHours < 24) {
+                averageResponseTime = `${avgHours.toFixed(1)} hours`;
+            } else {
+                averageResponseTime = `${(avgHours / 24).toFixed(1)} days`;
+            }
+        }
 
         return {
-            averageResponseTime: `${avgResponseHours.toFixed(1)} hours`,
+            averageResponseTime,
             onTimeResolution,
             overdueActions
         };
@@ -265,61 +338,206 @@ exports.calculateSLAMetrics = async (tenantId, startDate) => {
             error,
             context: { tenantId }
         });
-        return { averageResponseTime: "2.4 hours", onTimeResolution: 87, overdueActions: 15 };
+        return { averageResponseTime: "N/A", onTimeResolution: 0, overdueActions: 0 };
     }
 };
 
 /**
- * Get Top Complaints categories
+ * Get Top Complaints categories from AI-analyzed response themes
  */
 exports.getTopComplaints = async (tenantId, startDate) => {
-    const categories = ['Service Speed', 'Staff Behavior', 'Product Quality', 'Pricing', 'Facilities'];
-    return categories.map(category => ({
-        category,
-        count: Math.floor(Math.random() * 50) + 10,
-        trend: ['up', 'down', 'stable'][Math.floor(Math.random() * 3)]
-    }));
+    try {
+        const surveys = await Survey.find({ tenant: tenantId }).select("_id");
+        const surveyIds = surveys.map(s => s._id);
+
+        // Get previous period for trend calculation
+        const periodDays = Math.round((new Date() - startDate) / (1000 * 60 * 60 * 24));
+        const previousStart = new Date(startDate);
+        previousStart.setDate(previousStart.getDate() - periodDays);
+
+        // Aggregate themes from responses marked as complaints
+        const complaintThemes = await SurveyResponse.aggregate([
+            {
+                $match: {
+                    survey: { $in: surveyIds },
+                    createdAt: { $gte: startDate },
+                    "analysis.classification.isComplaint": true
+                }
+            },
+            { $unwind: { path: "$analysis.themes", preserveNullAndEmptyArrays: false } },
+            {
+                $group: {
+                    _id: "$analysis.themes",
+                    count: { $sum: 1 }
+                }
+            },
+            { $sort: { count: -1 } },
+            { $limit: 5 }
+        ]);
+
+        // Get previous period counts for trend
+        const previousComplaints = await SurveyResponse.aggregate([
+            {
+                $match: {
+                    survey: { $in: surveyIds },
+                    createdAt: { $gte: previousStart, $lt: startDate },
+                    "analysis.classification.isComplaint": true
+                }
+            },
+            { $unwind: { path: "$analysis.themes", preserveNullAndEmptyArrays: false } },
+            {
+                $group: {
+                    _id: "$analysis.themes",
+                    count: { $sum: 1 }
+                }
+            }
+        ]);
+
+        const previousCounts = {};
+        previousComplaints.forEach(p => { previousCounts[p._id] = p.count; });
+
+        return complaintThemes.map(theme => {
+            const prevCount = previousCounts[theme._id] || 0;
+            let trend = 'stable';
+            if (theme.count > prevCount) trend = 'up';
+            else if (theme.count < prevCount) trend = 'down';
+
+            return {
+                category: theme._id || 'Uncategorized',
+                count: theme.count,
+                trend
+            };
+        });
+    } catch (error) {
+        Logger.error("getTopComplaints", "Error getting top complaints", { error, context: { tenantId } });
+        return [];
+    }
 };
 
 /**
- * Get Top Praises categories
+ * Get Top Praises categories from AI-analyzed response themes
  */
 exports.getTopPraises = async (tenantId, startDate) => {
-    const categories = ['Friendly Staff', 'Quick Service', 'Clean Environment', 'Good Value', 'Product Quality'];
-    return categories.map(category => ({
-        category,
-        count: Math.floor(Math.random() * 90) + 30,
-        trend: ['up', 'down', 'stable'][Math.floor(Math.random() * 3)]
-    }));
+    try {
+        const surveys = await Survey.find({ tenant: tenantId }).select("_id");
+        const surveyIds = surveys.map(s => s._id);
+
+        // Get previous period for trend calculation
+        const periodDays = Math.round((new Date() - startDate) / (1000 * 60 * 60 * 24));
+        const previousStart = new Date(startDate);
+        previousStart.setDate(previousStart.getDate() - periodDays);
+
+        // Aggregate themes from responses marked as praises
+        const praiseThemes = await SurveyResponse.aggregate([
+            {
+                $match: {
+                    survey: { $in: surveyIds },
+                    createdAt: { $gte: startDate },
+                    "analysis.classification.isPraise": true
+                }
+            },
+            { $unwind: { path: "$analysis.themes", preserveNullAndEmptyArrays: false } },
+            {
+                $group: {
+                    _id: "$analysis.themes",
+                    count: { $sum: 1 }
+                }
+            },
+            { $sort: { count: -1 } },
+            { $limit: 5 }
+        ]);
+
+        // Get previous period counts for trend
+        const previousPraises = await SurveyResponse.aggregate([
+            {
+                $match: {
+                    survey: { $in: surveyIds },
+                    createdAt: { $gte: previousStart, $lt: startDate },
+                    "analysis.classification.isPraise": true
+                }
+            },
+            { $unwind: { path: "$analysis.themes", preserveNullAndEmptyArrays: false } },
+            {
+                $group: {
+                    _id: "$analysis.themes",
+                    count: { $sum: 1 }
+                }
+            }
+        ]);
+
+        const previousCounts = {};
+        previousPraises.forEach(p => { previousCounts[p._id] = p.count; });
+
+        return praiseThemes.map(theme => {
+            const prevCount = previousCounts[theme._id] || 0;
+            let trend = 'stable';
+            if (theme.count > prevCount) trend = 'up';
+            else if (theme.count < prevCount) trend = 'down';
+
+            return {
+                category: theme._id || 'Uncategorized',
+                count: theme.count,
+                trend
+            };
+        });
+    } catch (error) {
+        Logger.error("getTopPraises", "Error getting top praises", { error, context: { tenantId } });
+        return [];
+    }
 };
 
 /**
- * Get Satisfaction Trend data
+ * Get Satisfaction Trend data - delegates to trendService for real data
  */
 exports.getSatisfactionTrend = async (tenantId, startDate, days) => {
-    const intervals = Math.min(days / 5, 12);
-    const labels = [];
-    const values = [];
+    try {
+        const trend = await trendService.getSatisfactionTrend(tenantId, { days });
 
-    for (let i = intervals - 1; i >= 0; i--) {
-        const date = new Date();
-        date.setDate(date.getDate() - (i * Math.floor(days / intervals)));
-        labels.push(date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }));
-        values.push(Math.random() * 1 + 3.5);
+        // Transform to expected format for dashboard
+        return {
+            labels: trend.trend.map(t => {
+                const date = new Date(t.date);
+                return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+            }),
+            values: trend.trend.map(t => t.avgRating || 0)
+        };
+    } catch (error) {
+        Logger.error("getSatisfactionTrend", "Error getting satisfaction trend", { error });
+        return { labels: [], values: [] };
     }
-
-    return { labels, values };
 };
 
 /**
- * Get Volume Trend data
+ * Get Volume Trend data - delegates to trendService for real data
  */
 exports.getVolumeTrend = async (tenantId, startDate, days) => {
-    const labels = ['Week 1', 'Week 2', 'Week 3', 'Week 4'];
-    const surveys = labels.map(() => Math.floor(Math.random() * 100) + 100);
-    const responses = surveys.map(s => Math.floor(s * (0.6 + Math.random() * 0.3)));
+    try {
+        const trend = await trendService.getVolumeTrend(tenantId, { days });
 
-    return { labels, surveys, responses };
+        // Transform to expected weekly format for dashboard
+        // Group by week if we have enough data points
+        const weeklyData = [];
+        const weekSize = Math.ceil(trend.trend.length / 4) || 1;
+
+        for (let i = 0; i < 4; i++) {
+            const weekResponses = trend.trend.slice(i * weekSize, (i + 1) * weekSize);
+            const totalCount = weekResponses.reduce((sum, t) => sum + (t.count || 0), 0);
+            weeklyData.push({
+                label: `Week ${i + 1}`,
+                surveys: Math.ceil(totalCount / 10) || 0, // Estimated surveys
+                responses: totalCount
+            });
+        }
+
+        return {
+            labels: weeklyData.map(w => w.label),
+            surveys: weeklyData.map(w => w.surveys),
+            responses: weeklyData.map(w => w.responses)
+        };
+    } catch (error) {
+        Logger.error("getVolumeTrend", "Error getting volume trend", { error });
+        return { labels: [], surveys: [], responses: [] };
+    }
 };
 
 /**

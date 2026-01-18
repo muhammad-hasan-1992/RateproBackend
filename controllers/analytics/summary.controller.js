@@ -1,4 +1,4 @@
-// controllers/analytics/summary.controller.js
+﻿// controllers/analytics/summary.controller.js
 const Survey = require("../../models/Survey");
 const SurveyResponse = require("../../models/SurveyResponse");
 const Action = require("../../models/Action");
@@ -42,7 +42,7 @@ exports.getSurveySummary = asyncHandler(async (req, res) => {
     npsService.getSurveyCSI(surveyId, { startDate }),
     sentimentService.getSurveySentimentAnalysis(surveyId, { limit: 100 }),
     trendService.getSurveyVolumeTrend(surveyId, { days: parseInt(days) }),
-    SurveyResponse.countDocuments({ 
+    SurveyResponse.countDocuments({
       survey: new mongoose.Types.ObjectId(surveyId),
       createdAt: { $gte: startDate }
     })
@@ -151,7 +151,7 @@ exports.getTenantSummary = asyncHandler(async (req, res) => {
   ]);
 
   // Calculate active vs inactive surveys
-  const activeSurveys = surveys.filter(s => 
+  const activeSurveys = surveys.filter(s =>
     ["active", "published"].includes(s.status)
   ).length;
 
@@ -178,7 +178,10 @@ exports.getTenantSummary = asyncHandler(async (req, res) => {
       nps: {
         current: nps.score,
         trend: comparison.changes.avgScore > 0 ? "up" : comparison.changes.avgScore < 0 ? "down" : "stable",
-        change: comparison.changes.avgScore
+        change: comparison.changes.avgScore,
+        promoters: nps.promoters || 0,
+        passives: nps.passives || 0,
+        detractors: nps.detractors || 0
       },
       csi: {
         current: csi.score,
@@ -186,8 +189,8 @@ exports.getTenantSummary = asyncHandler(async (req, res) => {
       },
       responseRate: {
         current: sentiment.totalResponses,
-        avgPerSurvey: surveys.length > 0 
-          ? Math.round(sentiment.totalResponses / surveys.length) 
+        avgPerSurvey: surveys.length > 0
+          ? Math.round(sentiment.totalResponses / surveys.length)
           : 0
       }
     },

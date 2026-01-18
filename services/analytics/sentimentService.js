@@ -29,7 +29,7 @@ exports.analyzeResponseSentiment = async (response) => {
   try {
     // Extract all textual content from the response
     const textContent = extractTextContent(response);
-    
+
     if (!textContent || textContent.length < 5) {
       return {
         sentiment: "neutral",
@@ -111,11 +111,11 @@ Feedback:
  */
 function extractTextContent(response) {
   const texts = [];
-  
+
   if (response.review) {
     texts.push(response.review);
   }
-  
+
   if (response.answers && Array.isArray(response.answers)) {
     response.answers.forEach(answer => {
       if (typeof answer.answer === "string" && answer.answer.length > 2) {
@@ -123,7 +123,7 @@ function extractTextContent(response) {
       }
     });
   }
-  
+
   return texts.filter(Boolean).join(" ").trim();
 }
 
@@ -133,9 +133,9 @@ function extractTextContent(response) {
  */
 exports.getSurveySentimentAnalysis = async (surveyId, options = {}) => {
   const { startDate, endDate, limit = 100 } = options;
-  
+
   const query = { survey: new mongoose.Types.ObjectId(surveyId) };
-  
+
   if (startDate || endDate) {
     query.createdAt = {};
     if (startDate) query.createdAt.$gte = new Date(startDate);
@@ -173,9 +173,20 @@ exports.getSurveySentimentAnalysis = async (surveyId, options = {}) => {
   let suggestionsCount = 0;
 
   for (const response of responses) {
-    // Analyze each response (in production, cache this)
-    const analysis = await this.analyzeResponseSentiment(response);
-    
+    // Use stored analysis from post-response processing (no duplicate AI calls)
+    const analysis = response.analysis || {
+      sentiment: "neutral",
+      sentimentScore: 0,
+      keywords: [],
+      themes: [],
+      emotions: [],
+      classification: {
+        isComplaint: false,
+        isPraise: false,
+        isSuggestion: false
+      }
+    };
+
     // Count sentiments
     sentimentCounts[analysis.sentiment] = (sentimentCounts[analysis.sentiment] || 0) + 1;
     totalSentimentScore += analysis.sentimentScore || 0;
@@ -235,7 +246,7 @@ exports.getTenantSentimentOverview = async (tenantId, options = {}) => {
   const startDate = new Date();
   startDate.setDate(startDate.getDate() - days);
 
-  const surveys = await Survey.find({ 
+  const surveys = await Survey.find({
     tenant: tenantId,
     status: { $in: ["active", "published"] }
   }).select("_id title").lean();
@@ -283,8 +294,8 @@ exports.getTenantSentimentOverview = async (tenantId, options = {}) => {
  * Generate sentiment heatmap data for visualization
  */
 exports.generateSentimentHeatmap = async (surveyId, options = {}) => {
-  const responses = await SurveyResponse.find({ 
-    survey: new mongoose.Types.ObjectId(surveyId) 
+  const responses = await SurveyResponse.find({
+    survey: new mongoose.Types.ObjectId(surveyId)
   })
     .sort({ createdAt: 1 })
     .lean();
@@ -306,28 +317,29 @@ exports.generateSentimentHeatmap = async (surveyId, options = {}) => {
     };
   });
 
-  // Build heatmap for each response
+  // Build heatmap for each response using stored analysis (no duplicate AI calls)
   for (const response of responses) {
     const responseData = {
       responseId: response._id,
       date: response.createdAt,
+      // Use response-level stored analysis
+      overallSentiment: response.analysis?.sentiment || "neutral",
+      overallScore: response.analysis?.sentimentScore || 0,
       questions: []
     };
 
+    // For question-level data, use the overall response sentiment
+    // (Individual answer-level sentiment analysis is not stored)
     for (const answer of (response.answers || [])) {
       const qId = answer.questionId?.toString();
       const qInfo = questionMap[qId];
-      
+
       if (qInfo && typeof answer.answer === "string") {
-        const sentiment = await this.analyzeResponseSentiment({ 
-          answers: [{ answer: answer.answer }] 
-        });
-        
         responseData.questions.push({
           questionIndex: qInfo.index,
           questionText: qInfo.text,
-          sentiment: sentiment.sentiment,
-          sentimentScore: sentiment.sentimentScore
+          sentiment: response.analysis?.sentiment || "neutral",
+          sentimentScore: response.analysis?.sentimentScore || 0
         });
       }
     }

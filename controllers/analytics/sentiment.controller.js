@@ -84,7 +84,7 @@ exports.analyzeResponseSentiment = asyncHandler(async (req, res) => {
     // Analyze existing response by ID
     const SurveyResponse = require("../../models/SurveyResponse");
     const response = await SurveyResponse.findById(responseId).lean();
-    
+
     if (!response) {
       return res.status(404).json({
         success: false,
@@ -92,6 +92,22 @@ exports.analyzeResponseSentiment = asyncHandler(async (req, res) => {
       });
     }
 
+    // Return stored analysis if available (no duplicate AI calls)
+    if (response.analysis?.analyzedAt) {
+      Logger.info("analyzeResponseSentiment", "Returning cached analysis", {
+        context: { tenantId, responseId, cached: true },
+        req
+      });
+
+      return res.status(200).json({
+        success: true,
+        message: "Returning stored analysis",
+        data: response.analysis,
+        cached: true
+      });
+    }
+
+    // Only analyze if not already analyzed
     analysis = await sentimentService.analyzeResponseSentiment(response);
   } else if (text || answers || review) {
     // Analyze provided text directly
@@ -171,11 +187,11 @@ exports.getComplaintsPraisesBreakdown = asyncHandler(async (req, res) => {
   const breakdown = {
     complaints: {
       count: analysis.complaintsCount,
-      percentage: analysis.totalResponses > 0 
+      percentage: analysis.totalResponses > 0
         ? Number(((analysis.complaintsCount / analysis.totalResponses) * 100).toFixed(1))
         : 0,
-      topThemes: analysis.topThemes.filter(t => 
-        ["issue", "problem", "complaint", "bad", "poor"].some(kw => 
+      topThemes: analysis.topThemes.filter(t =>
+        ["issue", "problem", "complaint", "bad", "poor"].some(kw =>
           t.theme.toLowerCase().includes(kw)
         )
       )

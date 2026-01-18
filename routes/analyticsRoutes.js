@@ -62,6 +62,24 @@ router.get("/trends", getTrendsAnalytics);
  */
 router.get("/alerts", getAlerts);
 
+// ===== DEMOGRAPHICS ROUTES =====
+const demographicsController = require("../controllers/analytics/demographics.controller");
+
+/**
+ * @route   GET /api/analytics/demographics
+ * @desc    Get response demographics breakdown (device, browser, OS, location, time patterns)
+ * @access  Private
+ * @params  ?days=30&surveyId=<optional>
+ */
+router.get("/demographics", demographicsController.getDemographics);
+
+/**
+ * @route   GET /api/analytics/demographics/:surveyId
+ * @desc    Get survey-specific demographics
+ * @access  Private
+ */
+router.get("/demographics/:surveyId", demographicsController.getSurveyDemographics);
+
 // ===== SENTIMENT ANALYSIS ROUTES =====
 // Client Requirement 2: Response-Level Content Analysis
 

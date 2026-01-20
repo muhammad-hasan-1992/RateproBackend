@@ -8,11 +8,11 @@ exports.calculateNPS = (responses) => {
   responses.forEach(r => {
     // Check for NPS score in 'score' field (the model uses 'score' for NPS 0-10)
     const npsValue = r.score !== undefined && r.score !== null ? Number(r.score) : null;
-    
+
     if (npsValue === null || isNaN(npsValue)) return; // Skip responses without NPS score
-    
+
     validResponses++;
-    
+
     if (npsValue >= 9) promoters++;
     else if (npsValue <= 6) detractors++;
     else passives++;
@@ -35,11 +35,11 @@ exports.calculateNPS = (responses) => {
 };
 
 exports.generateSentimentHeatmap = (responses) => {
-  // Example simplified version
+  // Read from stored analysis field (populated by post-response processor)
   return responses.map(r => ({
     questionId: r.questionId,
-    sentiment: r.sentiment || "neutral",
-    score: r.sentimentScore || 0
+    sentiment: r.analysis?.sentiment || "neutral",
+    score: r.analysis?.sentimentScore || 0
   }));
 };
 

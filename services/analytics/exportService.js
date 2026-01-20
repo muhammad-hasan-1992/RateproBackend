@@ -82,13 +82,30 @@ exports.exportAnalyticsPDF = async (surveyId, options = {}) => {
   const survey = await Survey.findById(surveyId).populate("tenant", "name").lean();
   if (!survey) throw new Error("Survey not found");
 
-  // Gather all analytics data
-  const [nps, csi, sentiment, volumeTrend] = await Promise.all([
-    npsService.getSurveyNPS(surveyId, { days }),
-    npsService.getSurveyCSI(surveyId, { days }),
-    sentimentService.getSurveySentimentAnalysis(surveyId, { limit: 100 }),
-    trendService.getSurveyVolumeTrend(surveyId, { days })
-  ]);
+  // Gather all analytics data with error handling
+  let nps, csi, sentiment, volumeTrend;
+  try {
+    [nps, csi, sentiment, volumeTrend] = await Promise.all([
+      npsService.getSurveyNPS(surveyId, { days }),
+      npsService.getSurveyCSI(surveyId, { days }),
+      sentimentService.getSurveySentimentAnalysis(surveyId, { limit: 100 }),
+      trendService.getSurveyVolumeTrend(surveyId, { days })
+    ]);
+  } catch (err) {
+    console.error("Error gathering analytics data for PDF:", err);
+    // Use default empty values if analytics fail
+    nps = { score: 0, promoters: 0, detractors: 0, passives: 0, distribution: { promoters: 0, passives: 0, detractors: 0 } };
+    csi = { score: 0, averageRating: 0 };
+    sentiment = { sentimentDistribution: { positive: 0, neutral: 0, negative: 0 }, complaintsCount: 0, praisesCount: 0, suggestionsCount: 0, topKeywords: [], topThemes: [] };
+    volumeTrend = { totalResponses: 0, trend: [] };
+  }
+
+  // Ensure null-safe access with defaults
+  const sentimentDist = sentiment?.sentimentDistribution || { positive: 0, neutral: 0, negative: 0 };
+  const npsDist = nps?.distribution || { promoters: 0, passives: 0, detractors: 0 };
+  const trendData = volumeTrend?.trend || [];
+  const keywords = sentiment?.topKeywords || [];
+  const themes = sentiment?.topThemes || [];
 
   // Create PDF document
   const doc = new PDFDocument({ margin: 50 });
@@ -122,10 +139,10 @@ exports.exportAnalyticsPDF = async (surveyId, options = {}) => {
     .moveDown(0.5);
 
   doc.fontSize(11);
-  doc.text(`Total Responses: ${volumeTrend.totalResponses}`, { continued: false });
-  doc.text(`NPS Score: ${nps.score} (${nps.promoters} promoters, ${nps.detractors} detractors)`);
-  doc.text(`Customer Satisfaction Index: ${csi.score}% (Avg Rating: ${csi.averageRating}/5)`);
-  doc.text(`Sentiment: ${sentiment.sentimentDistribution.positive} positive, ${sentiment.sentimentDistribution.negative} negative`);
+  doc.text(`Total Responses: ${volumeTrend?.totalResponses || 0}`, { continued: false });
+  doc.text(`NPS Score: ${nps?.score || 0} (${nps?.promoters || 0} promoters, ${nps?.detractors || 0} detractors)`);
+  doc.text(`Customer Satisfaction Index: ${csi?.score || 0}% (Avg Rating: ${csi?.averageRating || 0}/5)`);
+  doc.text(`Sentiment: ${sentimentDist.positive || 0} positive, ${sentimentDist.negative || 0} negative`);
   doc.moveDown(1);
 
   // NPS Breakdown
@@ -135,10 +152,10 @@ exports.exportAnalyticsPDF = async (surveyId, options = {}) => {
     .moveDown(0.5);
 
   doc.fontSize(11);
-  doc.text(`Score: ${nps.score}`);
-  doc.text(`Promoters (9-10): ${nps.promoters} (${nps.distribution.promoters}%)`);
-  doc.text(`Passives (7-8): ${nps.passives} (${nps.distribution.passives}%)`);
-  doc.text(`Detractors (0-6): ${nps.detractors} (${nps.distribution.detractors}%)`);
+  doc.text(`Score: ${nps?.score || 0}`);
+  doc.text(`Promoters (9-10): ${nps?.promoters || 0} (${npsDist.promoters || 0}%)`);
+  doc.text(`Passives (7-8): ${nps?.passives || 0} (${npsDist.passives || 0}%)`);
+  doc.text(`Detractors (0-6): ${nps?.detractors || 0} (${npsDist.detractors || 0}%)`);
   doc.moveDown(1);
 
   // Sentiment Analysis
@@ -148,19 +165,19 @@ exports.exportAnalyticsPDF = async (surveyId, options = {}) => {
     .moveDown(0.5);
 
   doc.fontSize(11);
-  doc.text(`Positive: ${sentiment.sentimentDistribution.positive}`);
-  doc.text(`Neutral: ${sentiment.sentimentDistribution.neutral}`);
-  doc.text(`Negative: ${sentiment.sentimentDistribution.negative}`);
-  doc.text(`Complaints: ${sentiment.complaintsCount}`);
-  doc.text(`Praises: ${sentiment.praisesCount}`);
-  doc.text(`Suggestions: ${sentiment.suggestionsCount}`);
+  doc.text(`Positive: ${sentimentDist.positive || 0}`);
+  doc.text(`Neutral: ${sentimentDist.neutral || 0}`);
+  doc.text(`Negative: ${sentimentDist.negative || 0}`);
+  doc.text(`Complaints: ${sentiment?.complaintsCount || 0}`);
+  doc.text(`Praises: ${sentiment?.praisesCount || 0}`);
+  doc.text(`Suggestions: ${sentiment?.suggestionsCount || 0}`);
   doc.moveDown(0.5);
 
-  if (sentiment.topKeywords.length > 0) {
-    doc.text("Top Keywords: " + sentiment.topKeywords.slice(0, 5).map(k => k.keyword).join(", "));
+  if (keywords.length > 0) {
+    doc.text("Top Keywords: " + keywords.slice(0, 5).map(k => k.keyword || k.word || k).join(", "));
   }
-  if (sentiment.topThemes.length > 0) {
-    doc.text("Top Themes: " + sentiment.topThemes.slice(0, 5).map(t => t.theme).join(", "));
+  if (themes.length > 0) {
+    doc.text("Top Themes: " + themes.slice(0, 5).map(t => t.theme || t.name || t).join(", "));
   }
   doc.moveDown(1);
 
@@ -171,9 +188,13 @@ exports.exportAnalyticsPDF = async (surveyId, options = {}) => {
     .moveDown(0.5);
 
   doc.fontSize(11);
-  volumeTrend.trend.slice(-7).forEach(t => {
-    doc.text(`${t.date}: ${t.count} responses`);
-  });
+  if (trendData.length > 0) {
+    trendData.slice(-7).forEach(t => {
+      doc.text(`${t.date || 'N/A'}: ${t.count || 0} responses`);
+    });
+  } else {
+    doc.text("No response trend data available for this period.");
+  }
 
   // Footer
   doc.moveDown(2);

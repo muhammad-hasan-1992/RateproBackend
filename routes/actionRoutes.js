@@ -35,7 +35,7 @@ router.route("/:id")
   .delete(allowRoles("companyAdmin", "admin"), deleteAction);
 
 // Specialized action routes
-router.put("/:id/assign", allowRoles("companyAdmin", "admin"), assignAction);
+router.put("/:id/assign", allowRoles("companyAdmin", "admin", "member"), assignAction);
 router.get("/priority/:priority", getActionsByPriority);
 router.get("/status/:status", getActionsByStatus);
 router.get("/analytics/summary", allowRoles("companyAdmin", "admin"), getActionsAnalytics);

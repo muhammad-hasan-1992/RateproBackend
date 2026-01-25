@@ -141,6 +141,36 @@ const surveySchema = new mongoose.Schema(
       questions: [questionSchema],
       lockedAt: Date
     },
+
+    // Per-survey action permissions
+    actionPermissions: {
+      // Users who can assign actions from this survey (empty = all with role permission)
+      allowedAssigners: [{
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User"
+      }],
+      // Users who can view actions from this survey (empty = all with role permission)
+      allowedViewers: [{
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User"
+      }],
+      // Restrict actions to specific team
+      restrictToTeam: {
+        type: String,
+        default: null
+      },
+      // Restrict actions to specific department
+      restrictToDepartment: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Department",
+        default: null
+      },
+      // Use survey-level permissions (false = use tenant-level only)
+      enabled: {
+        type: Boolean,
+        default: false
+      }
+    },
   },
   { timestamps: true }
 );

@@ -968,6 +968,68 @@ exports.getAllUsers = async (req, res, next) => {
   }
 };
 
+/**
+ * Get Tenant Users for Picker (lightweight endpoint)
+ * Returns minimal user data for assignment dropdowns
+ */
+exports.getTenantUsersForPicker = async (req, res, next) => {
+  try {
+    const { search, role, limit = 50 } = req.query;
+
+    const query = {
+      deleted: false,
+      isActive: true,
+    };
+
+    // Tenant scoping
+    if (req.user.role !== "admin") {
+      if (!req.tenantId) {
+        return res.status(403).json({ message: "Access denied: No tenant" });
+      }
+      query.tenant = req.tenantId;
+      query.role = { $ne: "admin" }; // Exclude super admins
+    }
+
+    // Optional role filter
+    if (role && role !== "all") {
+      query.role = role;
+    }
+
+    // Optional search
+    if (search) {
+      query.$or = [
+        { name: { $regex: search, $options: "i" } },
+        { email: { $regex: search, $options: "i" } },
+      ];
+    }
+
+    const users = await User.find(query)
+      .select("_id name email avatar role")
+      .sort({ name: 1 })
+      .limit(parseInt(limit))
+      .lean();
+
+    res.status(200).json({
+      success: true,
+      users: users.map(u => ({
+        id: u._id,
+        _id: u._id,
+        name: u.name,
+        email: u.email,
+        avatar: u.avatar?.url || null,
+        role: u.role,
+      })),
+    });
+  } catch (err) {
+    Logger.error("getTenantUsersForPicker", "Error fetching users for picker", {
+      error: err,
+      context: { userId: req.user?._id },
+      req
+    });
+    next(err);
+  }
+};
+
 // Export User Data as PDF
 exports.getUserById = async (req, res, next) => {
   try {

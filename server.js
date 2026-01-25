@@ -10,9 +10,10 @@ const cron = require('node-cron');
 const { notFound, errorHandler } = require("./middlewares/errorHandler");
 const retagInactiveContacts = require("./jobs/retagInactiveContacts.job.js");
 const { syncSystemSegments } = require("./crons/systemSegments.cron.js");
-const { autoCloseSurveys } = require("./crons/autoCloseSurveys.cron.js"); 
+const { autoCloseSurveys } = require("./crons/autoCloseSurveys.cron.js");
 const { recomputeAudienceIntelligence } = require("./jobs/audience/recomputeAudienceIntelligence.job");
 const { enableNotificationsForAllTenants } = require("./scripts/enableNotifications.js");
+const { scheduleMonthlyUsageReset } = require("./crons/resetMonthlyUsage");
 
 // Event listeners for response processing pipeline
 // require("./workers/responseProcessor.worker");
@@ -25,6 +26,7 @@ const startServer = async () => {
   try {
     await connectDB();
     enableNotificationsForAllTenants();
+    scheduleMonthlyUsageReset(); // Schedule subscription usage reset cron
   } catch (err) {
     console.error("Server startup error:", err);
     process.exit(1);
@@ -93,6 +95,8 @@ app.use("/api/survey-templates", require("./routes/surveyTemplatesRoutes"));
 
 app.use("/api/ai", require("./routes/aiRoutes"));
 app.use("/api/actions", require("./routes/actionRoutes"));
+app.use("/api/actions/templates", require("./routes/actionTemplateRoutes"));
+app.use("/api/escalation", require("./routes/escalationRoutes"));
 app.use("/api/analytics", require("./routes/analyticsRoutes"));
 
 app.use("/api/sms", require("./routes/smsRoutes"));
@@ -117,8 +121,17 @@ app.use("/api/logic-engine", require("./routes/logicEngineRoutes"));
 
 app.use('/api/plans', require('./routes/planRoutes'));
 
+// 🔥 NEW: Subscription and billing routes
+app.use('/api/subscriptions', require('./routes/subscriptionRoutes'));
+app.use('/api/admin/subscription', require('./routes/adminSubscriptionRoutes'));
+
 cron.schedule('*/5 * * * *', () => {
   require('./controllers/surveyController').autoPublishScheduledSurveys();
+});
+
+// Escalation check - every 15 minutes
+cron.schedule('*/15 * * * *', () => {
+  require('./crons/escalation.cron').runEscalationCheck();
 });
 
 cron.schedule('0 2 * * *', async () => {

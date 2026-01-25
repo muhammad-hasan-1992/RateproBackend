@@ -7,6 +7,9 @@ const Logger = require("../../utils/logger");
 
 /**
  * Assign action to user/team (manual override)
+ * - Admin/CompanyAdmin can assign to anyone
+ * - Current assignee can reassign
+ * - Members can self-assign (assign to themselves)
  */
 exports.assignAction = async (req, res, next) => {
     try {
@@ -17,11 +20,21 @@ exports.assignAction = async (req, res, next) => {
             return res.status(404).json({ success: false, message: "Action not found" });
         }
 
-        // Permission check
-        const canAssign = req.user.role === "admin" || req.user.role === "companyAdmin" ||
-            (action.assignedTo && action.assignedTo.toString() === req.user._id.toString());
+        // Permission check:
+        // - Admins and companyAdmins can always assign
+        // - Current assignee can reassign
+        // - Members can self-assign (assign to themselves only)
+        const isAdmin = req.user.role === "admin" || req.user.role === "companyAdmin";
+        const isCurrentAssignee = action.assignedTo && action.assignedTo.toString() === req.user._id.toString();
+        const isSelfAssigning = assignedTo === req.user._id.toString();
+
+        const canAssign = isAdmin || isCurrentAssignee || isSelfAssigning;
+
         if (!canAssign) {
-            return res.status(403).json({ success: false, message: "Not authorized to assign this action" });
+            return res.status(403).json({
+                success: false,
+                message: "Not authorized to assign this action. You can only assign actions to yourself."
+            });
         }
 
         // Validate assignee

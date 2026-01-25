@@ -127,6 +127,31 @@ const tenantSchema = new mongoose.Schema({
   },
   products: [{ type: String }],
   contacts: [{ phone: String, name: String, role: String }],
+
+  // Action Management Settings
+  actionSettings: {
+    // Default user to assign actions when no rule matches
+    defaultAssignee: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null
+    },
+    // Default team for unassigned actions
+    defaultTeam: {
+      type: String,
+      default: null
+    },
+    // If true and no default, assign to action creator
+    autoAssignToCreator: {
+      type: Boolean,
+      default: false
+    },
+    // Enable auto-escalation for this tenant
+    enableEscalation: {
+      type: Boolean,
+      default: true
+    }
+  },
 }, { timestamps: true });
 
 module.exports = mongoose.model('Tenant', tenantSchema);

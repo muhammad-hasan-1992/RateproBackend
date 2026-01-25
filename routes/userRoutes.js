@@ -2,7 +2,7 @@
 const express = require('express');
 const router = express.Router();
 // const upload = require('../middlewares/multer');
-const { upload, excelUpload }  = require('../middlewares/multer');
+const { upload, excelUpload } = require('../middlewares/multer');
 const { protect } = require('../middlewares/authMiddleware');
 const { allowRoles } = require('../middlewares/roleMiddleware');
 const { allowPermission } = require('../middlewares/permissionMiddleware');
@@ -17,6 +17,7 @@ const {
   sendNotification,
   updateMe,
   bulkCreateUsers,
+  getTenantUsersForPicker,
 } = require('../controllers/userController');
 
 // Middleware to set tenantId for company-specific routes
@@ -24,7 +25,7 @@ const setTenantId = (req, res, next) => {
   if (req.user.role === 'admin') {
     return next();
   }
-  
+
   if (!req.user.tenant) {
     return res.status(403).json({ message: 'Access denied: No tenant associated with this user' });
   }
@@ -38,6 +39,9 @@ router.put('/me', protect, upload.single('avatar'), updateMe);
 
 // Protected routes for admin, companyAdmin, and members with permissions
 router.use(protect, setTenantId);
+
+// User picker for assignment dropdowns (all authenticated users can access)
+router.get('/picker', getTenantUsersForPicker);
 
 // Routes for admin and companyAdmin (no permission check)
 router.post('/', allowRoles('admin', 'companyAdmin'), createUser);

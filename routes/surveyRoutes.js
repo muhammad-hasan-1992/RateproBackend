@@ -1,4 +1,11 @@
 // routes/surveyRoutes.js
+// ============================================================================
+// Survey Routes - TENANT LAYER (Company Admin + Member)
+// 
+// These routes are for tenant-scoped resources.
+// System Admin (role: 'admin') MUST NOT access these routes.
+// ============================================================================
+
 const express = require("express");
 const router = express.Router();
 const { upload } = require("../middlewares/multer");
@@ -6,6 +13,7 @@ const { protect } = require("../middlewares/authMiddleware");
 const { allowRoles } = require("../middlewares/roleMiddleware");
 const { allowPermission } = require("../middlewares/permissionMiddleware");
 const { tenantCheck } = require("../middlewares/tenantMiddleware");
+const { enforceTenantScope } = require("../middlewares/scopeMiddleware");
 const { surveyResponseLimiter, anonymousSurveyLimiter } = require("../middlewares/rateLimiter");
 
 // ============================================================================
@@ -86,17 +94,20 @@ router.post("/responses/anonymous/:surveyId", surveyResponseLimiter, anonymousSu
 
 
 // ============================================================================
-// 🔒 PROTECTED ROUTES (Authentication Required)
+// 🔒 PROTECTED ROUTES (Authentication Required - TENANT LAYER)
 // ============================================================================
+// Middleware chain: protect → setTenantId → enforceTenantScope
+// This explicitly BLOCKS System Admin from accessing tenant survey resources
 router.use(protect);
 
-// Tenant middleware for non-admin users
+// Set tenant context for non-admin users
 const setTenantId = (req, res, next) => {
-  if (req.user.role === "admin") {
-    return next();
-  }
   if (!req.user.tenant) {
-    return res.status(403).json({ message: "Access denied: No tenant associated with this user" });
+    return res.status(403).json({
+      success: false,
+      message: "Access denied: No tenant associated with this user",
+      code: "NO_TENANT_CONTEXT"
+    });
   }
   req.tenantId = req.user.tenant._id
     ? req.user.tenant._id.toString()
@@ -105,6 +116,7 @@ const setTenantId = (req, res, next) => {
 };
 
 router.use(setTenantId);
+router.use(enforceTenantScope);  // Blocks System Admin from tenant resources
 
 
 // ============================================================================

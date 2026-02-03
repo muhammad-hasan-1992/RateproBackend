@@ -125,6 +125,12 @@ app.use('/api/plans', require('./routes/planRoutes'));
 app.use('/api/subscriptions', require('./routes/subscriptionRoutes'));
 app.use('/api/admin/subscription', require('./routes/adminSubscriptionRoutes'));
 
+// 🔥 NEW: Dropdown settings routes (System Settings)
+app.use('/api/settings/dropdowns', require('./routes/dropdownSettings.routes'));
+
+// 🔥 NEW: Platform routes (System Admin only)
+app.use('/api/platform', require('./routes/platform.routes'));
+
 cron.schedule('*/5 * * * *', () => {
   require('./controllers/surveyController').autoPublishScheduledSurveys();
 });

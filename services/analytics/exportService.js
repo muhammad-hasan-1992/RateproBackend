@@ -74,13 +74,17 @@ exports.exportResponsesCSV = async (surveyId, options = {}) => {
 };
 
 /**
- * Export survey analytics to PDF
+ * Export survey analytics to PDF (REFACTORED with Template System)
+ * Now uses AnalyticsReportTemplate for professional branding and layout.
  */
 exports.exportAnalyticsPDF = async (surveyId, options = {}) => {
   const { days = 30 } = options;
 
   const survey = await Survey.findById(surveyId).populate("tenant", "name").lean();
   if (!survey) throw new Error("Survey not found");
+
+  // Import template class
+  const AnalyticsReportTemplate = require('../export/AnalyticsReportTemplate');
 
   // Gather all analytics data with error handling
   let nps, csi, sentiment, volumeTrend;
@@ -93,117 +97,75 @@ exports.exportAnalyticsPDF = async (surveyId, options = {}) => {
     ]);
   } catch (err) {
     console.error("Error gathering analytics data for PDF:", err);
-    // Use default empty values if analytics fail
-    nps = { score: 0, promoters: 0, detractors: 0, passives: 0, distribution: { promoters: 0, passives: 0, detractors: 0 } };
+    nps = { score: 0, promoters: 0, detractors: 0, passives: 0 };
     csi = { score: 0, averageRating: 0 };
-    sentiment = { sentimentDistribution: { positive: 0, neutral: 0, negative: 0 }, complaintsCount: 0, praisesCount: 0, suggestionsCount: 0, topKeywords: [], topThemes: [] };
+    sentiment = { sentimentDistribution: {}, complaintsCount: 0, praisesCount: 0 };
     volumeTrend = { totalResponses: 0, trend: [] };
   }
 
-  // Ensure null-safe access with defaults
-  const sentimentDist = sentiment?.sentimentDistribution || { positive: 0, neutral: 0, negative: 0 };
-  const npsDist = nps?.distribution || { promoters: 0, passives: 0, detractors: 0 };
-  const trendData = volumeTrend?.trend || [];
-  const keywords = sentiment?.topKeywords || [];
-  const themes = sentiment?.topThemes || [];
+  // Prepare analytics data for template
+  const analyticsData = {
+    summary: {
+      totalResponses: volumeTrend?.totalResponses || 0,
+      completionRate: survey.completionRate || 0,
+      avgResponseTime: 'N/A',
+    },
+    nps: {
+      score: nps?.score || 0,
+      promoters: nps?.promoters || 0,
+      passives: nps?.passives || 0,
+      detractors: nps?.detractors || 0,
+      promoterPercent: nps?.distribution?.promoters || 0,
+      passivePercent: nps?.distribution?.passives || 0,
+      detractorPercent: nps?.distribution?.detractors || 0,
+    },
+    csi: {
+      score: csi?.score || 0,
+      averageRating: csi?.averageRating || 0,
+      totalRatings: csi?.totalRatings || 0,
+    },
+    sentiment: {
+      overall: sentiment?.overallSentiment || 'Neutral',
+      confidence: sentiment?.confidence || 0,
+      distribution: {
+        positive: sentiment?.sentimentDistribution?.positive || 0,
+        neutral: sentiment?.sentimentDistribution?.neutral || 0,
+        negative: sentiment?.sentimentDistribution?.negative || 0,
+        positivePercent: sentiment?.sentimentDistribution?.positivePercent || 0,
+        neutralPercent: sentiment?.sentimentDistribution?.neutralPercent || 0,
+        negativePercent: sentiment?.sentimentDistribution?.negativePercent || 0,
+      },
+    },
+    trend: {
+      totalResponses: volumeTrend?.totalResponses || 0,
+      period: `Last ${days} days`,
+      peakDate: volumeTrend?.peakDate || null,
+      peakCount: volumeTrend?.peakCount || 0,
+    },
+  };
 
-  // Create PDF document
-  const doc = new PDFDocument({ margin: 50 });
+  // Create template with branding
+  const template = new AnalyticsReportTemplate({
+    title: 'Survey Analytics Report',
+    subtitle: survey.title,
+    survey: survey,
+    analytics: analyticsData,
+  });
+
+  // Initialize tenant branding
+  const tenantId = survey.tenant?._id || survey.tenant;
+  await template.initBranding(tenantId);
+
+  // Build the report
+  await template.build();
+
+  // Get PDF document and collect chunks
+  const doc = template.getDocument();
   const chunks = [];
-
   doc.on("data", chunk => chunks.push(chunk));
 
-  // Header
-  doc
-    .fontSize(24)
-    .text("Survey Analytics Report", { align: "center" })
-    .moveDown(0.5);
-
-  doc
-    .fontSize(14)
-    .text(survey.title, { align: "center" })
-    .moveDown(0.3);
-
-  doc
-    .fontSize(10)
-    .fillColor("#666")
-    .text(`Generated: ${new Date().toLocaleDateString()}`, { align: "center" })
-    .text(`Period: Last ${days} days`, { align: "center" })
-    .moveDown(1);
-
-  // Executive Summary
-  doc
-    .fillColor("#000")
-    .fontSize(16)
-    .text("Executive Summary", { underline: true })
-    .moveDown(0.5);
-
-  doc.fontSize(11);
-  doc.text(`Total Responses: ${volumeTrend?.totalResponses || 0}`, { continued: false });
-  doc.text(`NPS Score: ${nps?.score || 0} (${nps?.promoters || 0} promoters, ${nps?.detractors || 0} detractors)`);
-  doc.text(`Customer Satisfaction Index: ${csi?.score || 0}% (Avg Rating: ${csi?.averageRating || 0}/5)`);
-  doc.text(`Sentiment: ${sentimentDist.positive || 0} positive, ${sentimentDist.negative || 0} negative`);
-  doc.moveDown(1);
-
-  // NPS Breakdown
-  doc
-    .fontSize(16)
-    .text("Net Promoter Score (NPS)", { underline: true })
-    .moveDown(0.5);
-
-  doc.fontSize(11);
-  doc.text(`Score: ${nps?.score || 0}`);
-  doc.text(`Promoters (9-10): ${nps?.promoters || 0} (${npsDist.promoters || 0}%)`);
-  doc.text(`Passives (7-8): ${nps?.passives || 0} (${npsDist.passives || 0}%)`);
-  doc.text(`Detractors (0-6): ${nps?.detractors || 0} (${npsDist.detractors || 0}%)`);
-  doc.moveDown(1);
-
-  // Sentiment Analysis
-  doc
-    .fontSize(16)
-    .text("Sentiment Analysis", { underline: true })
-    .moveDown(0.5);
-
-  doc.fontSize(11);
-  doc.text(`Positive: ${sentimentDist.positive || 0}`);
-  doc.text(`Neutral: ${sentimentDist.neutral || 0}`);
-  doc.text(`Negative: ${sentimentDist.negative || 0}`);
-  doc.text(`Complaints: ${sentiment?.complaintsCount || 0}`);
-  doc.text(`Praises: ${sentiment?.praisesCount || 0}`);
-  doc.text(`Suggestions: ${sentiment?.suggestionsCount || 0}`);
-  doc.moveDown(0.5);
-
-  if (keywords.length > 0) {
-    doc.text("Top Keywords: " + keywords.slice(0, 5).map(k => k.keyword || k.word || k).join(", "));
-  }
-  if (themes.length > 0) {
-    doc.text("Top Themes: " + themes.slice(0, 5).map(t => t.theme || t.name || t).join(", "));
-  }
-  doc.moveDown(1);
-
-  // Response Volume
-  doc
-    .fontSize(16)
-    .text("Response Volume Trend", { underline: true })
-    .moveDown(0.5);
-
-  doc.fontSize(11);
-  if (trendData.length > 0) {
-    trendData.slice(-7).forEach(t => {
-      doc.text(`${t.date || 'N/A'}: ${t.count || 0} responses`);
-    });
-  } else {
-    doc.text("No response trend data available for this period.");
-  }
-
-  // Footer
-  doc.moveDown(2);
-  doc
-    .fontSize(9)
-    .fillColor("#999")
-    .text("Generated by RatePro Analytics", { align: "center" });
-
-  doc.end();
+  // Finalize and end
+  template.end();
 
   return new Promise((resolve) => {
     doc.on("end", () => {

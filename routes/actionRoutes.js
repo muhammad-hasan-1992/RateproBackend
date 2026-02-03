@@ -1,9 +1,17 @@
 // routes/actionRoutes.js
+// ============================================================================
+// Action Routes - TENANT LAYER (Company Admin + Member)
+// 
+// These routes are for tenant-scoped action management.
+// System Admin (role: 'admin') MUST NOT access these routes.
+// ============================================================================
+
 const express = require("express");
 const router = express.Router();
 const { protect } = require("../middlewares/authMiddleware");
 const { setTenantId, tenantCheck } = require("../middlewares/tenantMiddleware");
 const { allowRoles } = require("../middlewares/roleMiddleware");
+const { enforceTenantScope } = require("../middlewares/scopeMiddleware");
 
 // ============================================================================
 // MODULAR CONTROLLERS (Clean Architecture)
@@ -20,9 +28,14 @@ const { getActionsAnalytics } = require("../controllers/action/getActionsAnalyti
 const { bulkUpdateActions } = require("../controllers/action/bulkUpdateActions.controller");
 const { generateActionsFromFeedback } = require("../controllers/action/generateActionsFromFeedback.controller");
 
-// Middleware to protect all routes
+// ============================================================================
+// 🔒 Middleware to protect all routes - TENANT LAYER
+// ============================================================================
+// Middleware chain: protect → setTenantId → enforceTenantScope
+// This explicitly BLOCKS System Admin from accessing tenant actions
 router.use(protect);
 router.use(setTenantId);
+router.use(enforceTenantScope);  // Blocks System Admin from tenant resources
 
 // Action CRUD routes
 router.route("/")

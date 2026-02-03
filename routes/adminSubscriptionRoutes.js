@@ -1,10 +1,16 @@
 // routes/adminSubscriptionRoutes.js
-// Admin routes for managing subscription system
+// ============================================================================
+// Admin Subscription Routes - PLATFORM LAYER (System Admin Only)
+// 
+// These routes are EXCLUSIVE to system admins (role: 'admin').
+// Company Admins and Members MUST NOT access these routes.
+// ============================================================================
 
 const express = require('express');
 const router = express.Router();
 const { protect } = require('../middlewares/authMiddleware');
 const { allowRoles } = require('../middlewares/roleMiddleware');
+const { enforcePlatformScope } = require('../middlewares/scopeMiddleware');
 
 // Controllers
 const {
@@ -22,10 +28,11 @@ const {
     applyPlanToTenant
 } = require('../controllers/subscription/adminController');
 
-// ============ ADMIN ONLY ROUTES ============
-
+// ============ PLATFORM ADMIN ONLY ROUTES ============
+// Middleware chain: protect → enforcePlatformScope → allowRoles('admin')
 router.use(protect);
-router.use(allowRoles('admin'));
+router.use(enforcePlatformScope);  // Blocks non-admin users
+router.use(allowRoles('admin'));   // Defense in depth
 
 // Feature Definitions
 router.route('/features')

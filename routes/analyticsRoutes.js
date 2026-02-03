@@ -1,4 +1,11 @@
 // routes/analyticsRoutes.js
+// ============================================================================
+// Analytics Routes - TENANT LAYER (Company Admin + Member)
+// 
+// These routes are for tenant-scoped analytics resources.
+// System Admin (role: 'admin') MUST NOT access these routes.
+// ============================================================================
+
 const express = require("express");
 const router = express.Router();
 
@@ -19,11 +26,17 @@ const { getAnalytics } = require("../controllers/analytics/getAnalytics.controll
 
 const { protect } = require("../middlewares/authMiddleware");
 const { setTenantId } = require("../middlewares/tenantMiddleware");
+const { enforceTenantScope } = require("../middlewares/scopeMiddleware");
 
 
-// Apply authentication and tenant middleware to all routes
+// ============================================================================
+// 🔒 Apply authentication and scope enforcement to all routes
+// ============================================================================
+// Middleware chain: protect → setTenantId → enforceTenantScope
+// This explicitly BLOCKS System Admin from accessing tenant analytics
 router.use(protect);
 router.use(setTenantId);
+router.use(enforceTenantScope);  // Blocks System Admin from tenant resources
 
 // ===== LEGACY ROUTES (for backward compatibility) =====
 router.get("/survey/:surveyId", getSurveyStats);

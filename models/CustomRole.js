@@ -53,11 +53,12 @@ const customRoleSchema = new mongoose.Schema({
 customRoleSchema.add({
   permissionsSignature: {
     type: String,
-    required: true,
+    required: false, // Optional now - kept for backward compatibility
+    default: "",
   }
 });
 
-// Har save se pehle permissionsSignature update karo
+// Update permissionsSignature on save (kept for backward compatibility)
 customRoleSchema.pre("save", function (next) {
   if (this.permissions && this.permissions.length > 0) {
     const sorted = this.permissions.map(id => id.toString()).sort().join("_");
@@ -68,11 +69,9 @@ customRoleSchema.pre("save", function (next) {
   next();
 });
 
-// Ab unique index tenant+name+permissionsSignature par lagao
-customRoleSchema.index({ tenant: 1, name: 1, permissionsSignature: 1 }, { unique: true });
-
-// Index for faster queries by tenant and name (unique per tenant)
-// customRoleSchema.index({ tenant: 1, name: 1 }, { unique: true });
+// UPDATED: Unique index on tenant + name only (prevents duplicate role names)
+// Role names must be unique per tenant, regardless of permissions
+customRoleSchema.index({ tenant: 1, name: 1 }, { unique: true });
 
 // Pre-validate hook to ensure tenant exists
 customRoleSchema.pre('validate', async function (next) {

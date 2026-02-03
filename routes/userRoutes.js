@@ -1,4 +1,11 @@
 // /Routes/userRoutes.js
+// ============================================================================
+// User Routes - TENANT LAYER (Company Admin + Member)
+// 
+// These routes are for tenant-scoped user management.
+// System Admin (role: 'admin') MUST NOT access these routes.
+// ============================================================================
+
 const express = require('express');
 const router = express.Router();
 // const upload = require('../middlewares/multer');
@@ -6,6 +13,7 @@ const { upload, excelUpload } = require('../middlewares/multer');
 const { protect } = require('../middlewares/authMiddleware');
 const { allowRoles } = require('../middlewares/roleMiddleware');
 const { allowPermission } = require('../middlewares/permissionMiddleware');
+// Note: enforceTenantScope removed - Admin users need access to all users
 const {
   createUser,
   updateUser,
@@ -21,13 +29,20 @@ const {
 } = require('../controllers/userController');
 
 // Middleware to set tenantId for company-specific routes
+// Admin users bypass tenant check (Platform Admin has access to all tenants)
 const setTenantId = (req, res, next) => {
-  if (req.user.role === 'admin') {
+  // Skip tenant check for Admin (Platform/System Admin)
+  if (req.user.role === "admin") {
+    req.tenantId = null; // No tenant restriction for admin
     return next();
   }
 
   if (!req.user.tenant) {
-    return res.status(403).json({ message: 'Access denied: No tenant associated with this user' });
+    return res.status(403).json({
+      success: false,
+      message: 'Access denied: No tenant associated with this user',
+      code: 'NO_TENANT_CONTEXT'
+    });
   }
 
   req.tenantId = req.user.tenant._id ? req.user.tenant._id.toString() : req.user.tenant.toString();
@@ -37,7 +52,8 @@ const setTenantId = (req, res, next) => {
 // Public/Authenticated route for user self-update
 router.put('/me', protect, upload.single('avatar'), updateMe);
 
-// Protected routes for admin, companyAdmin, and members with permissions
+// Protected routes - Apply tenant context
+// Note: enforceTenantScope removed to allow Admin access to all users
 router.use(protect, setTenantId);
 
 // User picker for assignment dropdowns (all authenticated users can access)

@@ -1,27 +1,18 @@
 // routes/roleRoutes.js
-// const express = require("express");
-// const router = express.Router();
-// const { protect } = require("../middlewares/authMiddleware");
-// const { allowRoles } = require("../middlewares/roleMiddleware");
-// const roleController = require("../controllers/roleController");
+// ============================================================================
+// Role Routes - TENANT LAYER (Company Admin Only)
+// 
+// These routes are for tenant-scoped role management.
+// System Admin (role: 'admin') MUST NOT access these routes.
+// Only Company Admin can manage roles within their tenant.
+// ============================================================================
 
-// // protect all role routes (admin + company)
-// router.use(protect);
-
-// // create & list roles (admin & company)
-// router.post("/", allowRoles("admin", "companyAdmin"), roleController.createRole);
-// router.get("/", allowRoles("admin", "companyAdmin"), roleController.getRoles);
-
-// // assign/remove role (admin & company)
-// router.post("/assign/:userId", allowRoles("admin", "companyAdmin"), roleController.assignRoleToUser);
-// router.post("/remove/:userId", allowRoles("admin", "companyAdmin"), roleController.removeRoleFromUser);
-
-// module.exports = router;
-// routes/roleRoutes.js
 const express = require("express");
 const router = express.Router();
 const { protect } = require("../middlewares/authMiddleware");
 const { allowRoles } = require("../middlewares/roleMiddleware");
+const { setTenantId } = require("../middlewares/tenantMiddleware");
+const { enforceTenantScope } = require("../middlewares/scopeMiddleware");
 const {
   createRole,
   getRoles,
@@ -32,14 +23,22 @@ const {
   getUsersByRole,
 } = require("../controllers/roleController");
 
-// Role management (admin and companyAdmin only)
-router.post("/", protect, allowRoles("companyAdmin"), createRole);
-router.get("/", protect, allowRoles("companyAdmin"), getRoles);
-router.post("/assign/:userId", protect, allowRoles("companyAdmin"), assignRoleToUser);
-router.post("/remove/:userId", protect, allowRoles("companyAdmin"), removeRoleFromUser);
-router.put("/:roleId", protect, allowRoles("companyAdmin"), updateRole);
-router.delete("/:roleId", protect, allowRoles("companyAdmin"), deleteRole);
+// ============================================================================
+// 🔒 Middleware to protect all routes - TENANT LAYER
+// ============================================================================
+// Middleware chain: protect → setTenantId → enforceTenantScope → allowRoles
+// This explicitly BLOCKS System Admin from accessing tenant roles
+router.use(protect);
+router.use(setTenantId);
+router.use(enforceTenantScope);  // Blocks System Admin from tenant resources
 
-router.get("/:roleId/users", protect, allowRoles("companyAdmin"), getUsersByRole);
+// Role management (companyAdmin only within their tenant)
+router.post("/", allowRoles("companyAdmin"), createRole);
+router.get("/", allowRoles("companyAdmin"), getRoles);
+router.post("/assign/:userId", allowRoles("companyAdmin"), assignRoleToUser);
+router.post("/remove/:userId", allowRoles("companyAdmin"), removeRoleFromUser);
+router.put("/:roleId", allowRoles("companyAdmin"), updateRole);
+router.delete("/:roleId", allowRoles("companyAdmin"), deleteRole);
+router.get("/:roleId/users", allowRoles("companyAdmin"), getUsersByRole);
 
 module.exports = router;

@@ -1,4 +1,11 @@
-// // routes/ticketRoutes.js
+// routes/ticketRoutes.js
+// ============================================================================
+// Ticket Routes - SHARED LAYER (Admin + Company Admin + Member)
+// 
+// Support tickets are a SPECIAL CASE: System Admin CAN view tenant tickets
+// to provide platform support. This is intentional cross-layer access.
+// ============================================================================
+
 const express = require('express');
 const router = express.Router();
 const { upload } = require('../middlewares/multer');
@@ -19,7 +26,8 @@ const {
   getComments,
 } = require('../controllers/ticketController');
 
-// Apply protect + tenant middleware globally
+// Apply protect middleware globally (tickets are accessible by all authenticated users)
+// Note: Tenant middleware handles context, but admin CAN access for support
 router.use(protect, setTenantId);
 
 // ---------- ADMIN / COMPANY ADMIN ROUTES ----------

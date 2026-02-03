@@ -86,18 +86,20 @@ exports.createRole = async (req, res) => {
       return res.status(400).json({ message: "Invalid permissions provided" });
     }
 
-    // --- Generate unique signature for (name + permissions) combo ---
+    // --- Generate unique signature for permissions (kept for backward compatibility) ---
     const sorted = validPermissions.map((p) => p._id.toString()).sort().join("_");
     const permissionsSignature = crypto.createHash("md5").update(sorted).digest("hex");
 
+    // UPDATED: Check for duplicate role name regardless of permissions
     const existingRole = await CustomRole.findOne({
       name,
       tenant: tenantId,
-      permissionsSignature,
     });
 
     if (existingRole) {
-      return res.status(400).json({ message: "Role with same name and permissions already exists" });
+      return res.status(400).json({
+        message: "A role with this name already exists. Please choose a unique name."
+      });
     }
 
     // --- Create role ---

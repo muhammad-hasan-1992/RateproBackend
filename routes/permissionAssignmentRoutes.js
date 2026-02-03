@@ -1,4 +1,11 @@
 // routes/permissionAssignmentRoutes.js
+// ============================================================================
+// Permission Assignment Routes - TENANT LAYER (Company Admin + Member)
+// 
+// These routes are for tenant-scoped permission assignment.
+// System Admin (role: 'admin') MUST NOT access these routes.
+// ============================================================================
+
 const express = require('express');
 const router = express.Router();
 const {
@@ -12,6 +19,7 @@ const { protect } = require('../middlewares/authMiddleware');
 const { allowRoles } = require('../middlewares/roleMiddleware');
 const { allowPermission } = require('../middlewares/permissionMiddleware');
 const { setTenantId } = require('../middlewares/tenantMiddleware');
+const { enforceTenantScope } = require('../middlewares/scopeMiddleware');
 
 // Custom middleware to skip permission check for companyAdmin
 const checkPermissionForMember = (permission) => (req, res, next) => {
@@ -22,9 +30,13 @@ const checkPermissionForMember = (permission) => (req, res, next) => {
   return allowPermission(permission)(req, res, next);
 };
 
-// Protect all routes and apply tenant scoping
+// ============================================================================
+// 🔒 Protect all routes and apply tenant scoping - TENANT LAYER
+// ============================================================================
+// Middleware chain: protect → setTenantId → enforceTenantScope
 router.use(protect);
 router.use(setTenantId);
+router.use(enforceTenantScope);  // Blocks System Admin from tenant resources
 
 // Routes for companyAdmin (no permission check) and member (with permission check)
 router.post(

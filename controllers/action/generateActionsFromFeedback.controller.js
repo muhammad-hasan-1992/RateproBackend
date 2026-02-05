@@ -98,6 +98,39 @@ exports.generateActionsFromFeedback = async (req, res, next) => {
                 createdActions.push(action);
             }
 
+            // Notify all CompanyAdmins of the tenant about new AI-generated actions
+            if (createdActions.length > 0) {
+                const User = require("../../models/User");
+                const { sendNotification } = require("../../utils/sendNotification");
+
+                const companyAdmins = await User.find({
+                    tenant: req.user.tenant,
+                    role: "companyAdmin",
+                    isActive: true,
+                    deleted: false
+                }).select("_id").lean();
+
+                // Get survey reference from first action if available
+                const surveyId = createdActions[0]?.metadata?.surveyId;
+                const surveyInfo = surveyId ? feedbacks.find(f => f.survey)?.survey?.title : null;
+
+                for (const admin of companyAdmins) {
+                    await sendNotification({
+                        userId: admin._id,
+                        type: "action",
+                        title: "AI-Generated Actions Created",
+                        message: `${createdActions.length} new action(s) generated from feedback analysis${surveyInfo ? ` for survey: ${surveyInfo}` : ""}`,
+                        data: {
+                            actionCount: createdActions.length,
+                            surveyId: surveyId || null,
+                            generatedBy: req.user._id,
+                            timestamp: new Date().toISOString()
+                        },
+                        actionUrl: "/app/actions"
+                    });
+                }
+            }
+
             res.status(200).json({
                 success: true,
                 message: `${createdActions.length} actions generated`,

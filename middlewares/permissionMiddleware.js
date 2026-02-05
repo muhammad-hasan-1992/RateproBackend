@@ -27,7 +27,15 @@ exports.allowPermission = (permission) => async (req, res, next) => {
     // Check permission in PermissionAssignment
     const permissionDoc = await Permission.findOne({ name: permission });
     if (!permissionDoc) {
-      return res.status(404).json({ message: 'Permission not found' });
+      // HARD WARNING: Permission does not exist in database - likely missing from seedPermissions.js
+      console.error(`[PERMISSION_ERROR] Permission "${permission}" does not exist in database. ` +
+        `Add it to seedPermissions.js and restart the server.`);
+      return res.status(500).json({
+        success: false,
+        message: `Configuration error: Permission "${permission}" is not defined`,
+        code: 'PERMISSION_NOT_CONFIGURED',
+        hint: 'This permission must be added to seedPermissions.js'
+      });
     }
 
     const hasDirectPermission = await PermissionAssignment.findOne({

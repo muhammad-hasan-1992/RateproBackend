@@ -99,6 +99,11 @@ const userSchema = new mongoose.Schema({
       return this.role === "companyAdmin";
     },
   },
+  // Cross-department survey access for CompanyAdmin (explicit opt-in)
+  crossDepartmentSurveyAccess: {
+    type: Boolean,
+    default: false, // Default false to prevent over-permissioning
+  },
   // Link to SurveyStats (for users who take surveys)
   surveyStats: {
     type: mongoose.Schema.Types.ObjectId,

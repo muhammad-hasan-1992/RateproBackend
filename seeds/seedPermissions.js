@@ -34,6 +34,10 @@ const permissions = [
     { name: "survey:detail:view", description: "View survey details", group: "survey" },
     { name: "survey:questions:create", description: "Create questions for a survey" },
     { name: "survey:questions:delete", description: "Delete questions from a survey" },
+    // Survey Actions (Department-scoped)
+    { name: "survey:delete", description: "Delete surveys within department", group: "survey" },
+    { name: "survey:activate", description: "Activate surveys within department", group: "survey" },
+    { name: "survey:deactivate", description: "Deactivate surveys within department", group: "survey" },
 
     { name: "feedback:analyze", description: "Analyze survey feedback", group: "feedback" },
     { name: "action:generate", description: "Generate action lists", group: "action" },
@@ -63,6 +67,19 @@ const permissions = [
     { name: "settings:smtp", description: "Configure SMTP server", group: "settings" },
     { name: "settings:thank-you-page", description: "Customize thank you page", group: "settings" },
     { name: "settings:theme", description: "Customize theme settings", group: "settings" },
+    // Template Management (Admin Only)
+    { name: "template:create", description: "Create survey templates", group: "template" },
+    { name: "template:update", description: "Update survey templates", group: "template" },
+    { name: "template:delete", description: "Delete survey templates", group: "template" },
+    // Template Usage (Assignable to Members by CompanyAdmin)
+    { name: "template:read", description: "View survey templates list", group: "template" },
+    { name: "template:detail:view", description: "View template details", group: "template" },
+    { name: "template:use", description: "Use templates to create surveys", group: "template" },
+    { name: "template:preview", description: "Preview survey templates", group: "template" },
+    // Action Management (Assignable to Members by CompanyAdmin)
+    { name: "surveyAction:view", description: "View survey actions", group: "action" },
+    { name: "surveyAction:assign", description: "Assign actions to team members", group: "action" },
+    { name: "surveyAction:notify", description: "Send notifications for actions", group: "action" },
 ];
 
 const seedPermissions = async () => {

@@ -27,9 +27,14 @@ const { listSurveys } = require("../controllers/survey/listSurveys.controller");
 const { getSurveyById } = require("../controllers/survey/getSurvey.controller");
 const updateSurvey = require("../controllers/survey/updateSurvey.controller");
 const deleteSurvey = require("../controllers/survey/deleteSurvey.controller");
+const activateSurvey = require("../controllers/survey/activateSurvey.controller");
+const deactivateSurvey = require("../controllers/survey/deactivateSurvey.controller");
 const { toggleSurveyStatus } = require("../controllers/survey/toggleStatus.controller");
 const { scheduleSurvey } = require("../controllers/survey/scheduleSurvey.controller");
 const setAudience = require("../controllers/survey/setAudience.controller");
+
+// Survey Permission Middleware (department-scoped)
+const { surveyPermission } = require("../middlewares/surveyPermissionMiddleware");
 
 // QR Code Controllers
 const { getAnonymousSurveyQRCode } = require("../controllers/survey/getAnonymousSurveyQRCode.controller");
@@ -188,16 +193,35 @@ router.put(
 router.delete(
   "/:surveyId",
   tenantCheck,
-  allowRoles("admin", "companyAdmin"),
-  allowPermission("survey:delete"),
+  surveyPermission("survey:delete"),
   deleteSurvey
 );
 
-// Status & Schedule
+// ============================================================================
+// 📊 SURVEY STATUS ROUTES (Explicit Activate/Deactivate)
+// ============================================================================
+
+// Activate survey (department-scoped)
+router.put(
+  "/:surveyId/activate",
+  tenantCheck,
+  surveyPermission("survey:activate"),
+  activateSurvey
+);
+
+// Deactivate survey (department-scoped)
+router.put(
+  "/:surveyId/deactivate",
+  tenantCheck,
+  surveyPermission("survey:deactivate"),
+  deactivateSurvey
+);
+
+// Legacy toggle route (deprecated - use explicit activate/deactivate)
 router.put(
   "/toggle/:id",
   tenantCheck,
-  allowRoles("admin", "companyAdmin"),
+  allowRoles("companyAdmin"),
   allowPermission("survey:settings:update"),
   toggleSurveyStatus
 );

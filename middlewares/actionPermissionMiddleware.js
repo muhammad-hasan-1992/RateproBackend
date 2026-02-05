@@ -1,18 +1,70 @@
 // middlewares/actionPermissionMiddleware.js
 const Survey = require("../models/Survey");
 const Action = require("../models/Action");
+const Permission = require("../models/Permission");
+const PermissionAssignment = require("../models/PermissionAssignment");
+
+/**
+ * Check if user has a specific permission
+ */
+const hasPermission = async (userId, permissionName, tenantId) => {
+    const permission = await Permission.findOne({ name: permissionName });
+    if (!permission) return false;
+
+    const assignment = await PermissionAssignment.findOne({
+        userId,
+        permissionId: permission._id,
+        tenantId
+    });
+
+    return !!assignment;
+};
 
 /**
  * Check if user has permission to access/modify actions from a specific survey
- * Uses survey-level permissions if enabled, otherwise allows role-based access
+ * Enhanced with:
+ * - System Admin blocking
+ * - Permission-based checks (surveyAction:view, surveyAction:assign)
+ * - actionManager field validation
  */
 const checkSurveyActionPermission = (permissionType = "view") => {
     return async (req, res, next) => {
         try {
+            const user = req.user;
+            const userRole = user.role;
+            const userId = user._id.toString();
+            const tenantId = user.tenant?._id || user.tenant;
+
+            // System Admin BLOCKED from tenant actions
+            if (userRole === "admin") {
+                return res.status(403).json({
+                    success: false,
+                    message: "System Admin cannot manage tenant actions"
+                });
+            }
+
+            // CompanyAdmin bypasses permission checks (still tenant-scoped)
+            if (userRole === "companyAdmin") {
+                return next();
+            }
+
+            // Check if user has the required permission
+            const permissionName = permissionType === "assign"
+                ? "surveyAction:assign"
+                : "surveyAction:view";
+
+            const hasRequiredPermission = await hasPermission(userId, permissionName, tenantId);
+            if (!hasRequiredPermission) {
+                return res.status(403).json({
+                    success: false,
+                    message: `Permission denied: ${permissionName} required`
+                });
+            }
+
             // Get action to find associated survey
             const actionId = req.params.id || req.params.actionId;
             if (!actionId) {
-                return next(); // No action ID, proceed with role-based check
+                return next(); // No action ID, proceed
             }
 
             const action = await Action.findById(actionId)
@@ -23,60 +75,57 @@ const checkSurveyActionPermission = (permissionType = "view") => {
                 return res.status(404).json({ success: false, message: "Action not found" });
             }
 
-            // If no survey association, use role-based permissions
+            // If no survey association, allow (general action)
             const surveyId = action.metadata?.surveyId;
             if (!surveyId) {
                 return next();
             }
 
             const survey = await Survey.findById(surveyId)
-                .select("actionPermissions tenant")
+                .select("actionPermissions actionManager tenant")
                 .lean();
 
-            if (!survey || !survey.actionPermissions?.enabled) {
-                return next(); // Survey permissions not enabled, use role-based
-            }
-
-            const perms = survey.actionPermissions;
-            const userId = req.user._id.toString();
-            const userRole = req.user.role;
-            const userDepartment = req.user.department?.toString();
-
-            // Admin always has access
-            if (userRole === "admin") {
+            if (!survey) {
                 return next();
             }
 
-            // Check department restriction
-            if (perms.restrictToDepartment && userDepartment !== perms.restrictToDepartment.toString()) {
-                return res.status(403).json({
-                    success: false,
-                    message: "You are not in the authorized department for actions from this survey"
-                });
-            }
-
-            // Check permission type
+            // For assignment permission, check actionManager
             if (permissionType === "assign") {
-                // Check if user is in allowedAssigners (empty = allow all with role permission)
-                if (perms.allowedAssigners?.length > 0) {
-                    const isAllowed = perms.allowedAssigners.some(id => id.toString() === userId);
-                    if (!isAllowed && userRole !== "companyAdmin") {
+                const isActionManager = survey.actionManager &&
+                    survey.actionManager.toString() === userId;
+
+                // Check cross-survey access flag (reusing existing field)
+                const hasCrossSurveyAccess = user.crossDepartmentSurveyAccess === true;
+
+                if (!isActionManager && !hasCrossSurveyAccess) {
+                    // Check legacy allowedAssigners array
+                    const perms = survey.actionPermissions;
+                    if (perms?.enabled && perms?.allowedAssigners?.length > 0) {
+                        const isAllowed = perms.allowedAssigners.some(id => id.toString() === userId);
+                        if (!isAllowed) {
+                            return res.status(403).json({
+                                success: false,
+                                message: "You can only assign actions for surveys you manage"
+                            });
+                        }
+                    } else if (!isActionManager) {
                         return res.status(403).json({
                             success: false,
-                            message: "You are not authorized to assign actions from this survey"
+                            message: "You can only assign actions for surveys you manage"
                         });
                     }
                 }
-            } else if (permissionType === "view") {
-                // Check if user is in allowedViewers (empty = allow all with role permission)
-                if (perms.allowedViewers?.length > 0) {
-                    const isAllowed = perms.allowedViewers.some(id => id.toString() === userId);
-                    if (!isAllowed && userRole !== "companyAdmin") {
-                        return res.status(403).json({
-                            success: false,
-                            message: "You are not authorized to view actions from this survey"
-                        });
-                    }
+            }
+
+            // Legacy department restriction check
+            const perms = survey.actionPermissions;
+            if (perms?.enabled && perms?.restrictToDepartment) {
+                const userDepartment = user.department?.toString();
+                if (userDepartment !== perms.restrictToDepartment.toString()) {
+                    return res.status(403).json({
+                        success: false,
+                        message: "You are not in the authorized department for actions from this survey"
+                    });
                 }
             }
 

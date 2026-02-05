@@ -12,6 +12,7 @@ const { protect } = require("../middlewares/authMiddleware");
 const { setTenantId, tenantCheck } = require("../middlewares/tenantMiddleware");
 const { allowRoles } = require("../middlewares/roleMiddleware");
 const { enforceTenantScope } = require("../middlewares/scopeMiddleware");
+const { checkSurveyActionPermission } = require("../middlewares/actionPermissionMiddleware");
 
 // ============================================================================
 // MODULAR CONTROLLERS (Clean Architecture)
@@ -39,19 +40,19 @@ router.use(enforceTenantScope);  // Blocks System Admin from tenant resources
 
 // Action CRUD routes
 router.route("/")
-  .get(getActions)
-  .post(allowRoles("companyAdmin", "admin"), createAction);
+  .get(checkSurveyActionPermission("view"), getActions)
+  .post(allowRoles("companyAdmin"), createAction);
 
 router.route("/:id")
-  .get(getActionById)
-  .put(allowRoles("companyAdmin", "admin", "member"), updateAction)
-  .delete(allowRoles("companyAdmin", "admin"), deleteAction);
+  .get(checkSurveyActionPermission("view"), getActionById)
+  .put(allowRoles("companyAdmin", "member"), checkSurveyActionPermission("assign"), updateAction)
+  .delete(allowRoles("companyAdmin"), deleteAction);
 
-// Specialized action routes
-router.put("/:id/assign", allowRoles("companyAdmin", "admin", "member"), assignAction);
-router.get("/priority/:priority", getActionsByPriority);
-router.get("/status/:status", getActionsByStatus);
-router.get("/analytics/summary", allowRoles("companyAdmin", "admin"), getActionsAnalytics);
+// Specialized action routes - Permission-based assignment
+router.put("/:id/assign", allowRoles("companyAdmin", "member"), checkSurveyActionPermission("assign"), assignAction);
+router.get("/priority/:priority", checkSurveyActionPermission("view"), getActionsByPriority);
+router.get("/status/:status", checkSurveyActionPermission("view"), getActionsByStatus);
+router.get("/analytics/summary", allowRoles("companyAdmin"), getActionsAnalytics);
 
 // Bulk operations
 router.put("/bulk/update", allowRoles("companyAdmin", "admin"), bulkUpdateActions);

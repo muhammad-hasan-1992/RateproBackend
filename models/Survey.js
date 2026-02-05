@@ -56,6 +56,20 @@ const surveySchema = new mongoose.Schema(
     },
     questions: [questionSchema],
     tenant: { type: mongoose.Schema.Types.ObjectId, ref: "Tenant", required: true },
+    // Department ownership - null means company-level (managed by CompanyAdmin only)
+    department: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Department",
+      default: null,
+      index: true
+    },
+    // Designated action/complaint manager for this survey
+    actionManager: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+      index: true
+    },
     settings: {
       isPublic: { type: Boolean, default: true },
       isAnonymous: { type: Boolean, default: false },

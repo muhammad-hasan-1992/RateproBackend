@@ -80,6 +80,7 @@ const surveySchema = new mongoose.Schema(
 
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
     totalResponses: { type: Number, default: 0 },
+    lastResponseAt: { type: Date }, // 🔥 NEW: Track latest response time for sorting
     averageScore: { type: Number, default: 0 },
     averageRating: { type: Number, default: 0 },
     deleted: { type: Boolean, default: false },

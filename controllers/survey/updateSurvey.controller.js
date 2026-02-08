@@ -23,13 +23,13 @@ module.exports = async function updateSurvey(req, res, next) {
 
     // ✅ FIX: Detect draft → active transition and delegate to publish service
     const isPublishing = survey.status === "draft" && req.body.status === "active";
-    
+
     if (isPublishing) {
       // ✅ FIX: Update survey data EXCEPT status (let publishService handle status change)
       const { status, ...dataWithoutStatus } = req.body;
       Object.assign(survey, dataWithoutStatus);
       await survey.save();
-      
+
       // Now trigger full publish logic (emails, logs, snapshot)
       // Survey is still "draft" at this point, so publishService won't reject it
       const result = await publishService.publish({
@@ -38,7 +38,7 @@ module.exports = async function updateSurvey(req, res, next) {
         tenantId: req.user.tenant,
         userId: req.user._id
       });
-      
+
       Logger.info("survey_publish", "Draft survey published via update", {
         context: {
           surveyId,
@@ -48,7 +48,7 @@ module.exports = async function updateSurvey(req, res, next) {
         },
         req
       });
-      
+
       return res.json({
         message: "Survey published successfully",
         survey,
@@ -56,10 +56,10 @@ module.exports = async function updateSurvey(req, res, next) {
       });
     }
 
-    // Prevent editing published surveys
-    if (survey.status === "active") {
-      return res.status(400).json({
-        message: "Published surveys cannot be edited",
+    // Prevent editing published surveys (only draft surveys can be edited)
+    if (survey.status !== "draft") {
+      return res.status(403).json({
+        message: "Only draft surveys can be edited. Published/active surveys are locked.",
       });
     }
 

@@ -46,15 +46,18 @@ exports.updateSurveyAnalytics = async ({ response, survey }) => {
     }
 
     // Update survey with latest analytics snapshot
+    // NOTE: Must update TOP-LEVEL fields (totalResponses, lastResponseAt) that listSurveysService reads
+    // Previously this wrote to nested analytics.* fields which were never queried
     await Survey.findByIdAndUpdate(surveyId, {
       $set: {
+        // Top-level fields used by listSurveysService
+        totalResponses: totalResponses,
+        lastResponseAt: new Date(),
+        // Keep analytics subdoc for backward compatibility
         "analytics.totalResponses": totalResponses,
         "analytics.npsScore": nps?.score || null,
         "analytics.avgCompletionTime": avgCompletionTime,
         "analytics.lastResponseAt": new Date(),
-      },
-      $inc: {
-        "analytics.responseCount": 0 // Touch the field (actual count is set above)
       }
     });
 

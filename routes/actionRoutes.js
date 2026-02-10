@@ -60,4 +60,15 @@ router.put("/bulk/update", allowRoles("companyAdmin", "admin"), bulkUpdateAction
 // AI-powered action generation from feedback
 router.post("/generate/feedback", allowRoles("companyAdmin", "admin"), generateActionsFromFeedback);
 
+// ============================================================================
+// Action Plan Routes (nested under actions/:id/plan)
+// ============================================================================
+const actionPlanController = require("../controllers/actionPlan/actionPlanController");
+
+// Create action plan for an action (starts in draft - requires confirmation)
+router.post("/:id/plan", allowRoles("companyAdmin", "member"), actionPlanController.createActionPlan);
+
+// Get action plan by action ID
+router.get("/:id/plan", checkSurveyActionPermission("view"), actionPlanController.getActionPlan);
+
 module.exports = router;

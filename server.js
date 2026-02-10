@@ -96,6 +96,11 @@ app.use("/api/survey-templates", require("./routes/surveyTemplatesRoutes"));
 app.use("/api/ai", require("./routes/aiRoutes"));
 app.use("/api/actions", require("./routes/actionRoutes"));
 app.use("/api/actions/templates", require("./routes/actionTemplateRoutes"));
+
+// 🔥 NEW: Action Plan and Step routes (Action Management Enhancement)
+app.use("/api/action-plans", require("./routes/actionPlanRoutes"));
+app.use("/api/action-steps", require("./routes/actionStepRoutes"));
+
 app.use("/api/escalation", require("./routes/escalationRoutes"));
 app.use("/api/analytics", require("./routes/analyticsRoutes"));
 

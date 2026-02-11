@@ -154,6 +154,17 @@ cron.schedule('0 2 * * *', async () => {
   });
 });
 
+// Action trend calculation - daily at 3 AM
+cron.schedule('0 3 * * *', async () => {
+  try {
+    const { calculateActionTrends } = require('./jobs/action/calculateTrend.job');
+    const result = await calculateActionTrends();
+    console.log(`[CRON] Action trends calculated: ${result.processed} processed, ${result.errors} errors`);
+  } catch (err) {
+    console.error('[CRON] Action trend calculation failed:', err.message);
+  }
+});
+
 // Error Handling Middleware
 app.use(notFound);
 app.use(errorHandler);

@@ -255,16 +255,24 @@ const generateActionsFromResponse = async (response, survey, tenantId) => {
             await Logger.warn("⚠️ Failed to parse AI response, using fallback", { responseId: response._id, surveyId: survey._id });
         }
 
-        // Create Action
-        const action = await Action.create({
-            title: "Customer Feedback Review",
-            description,
-            priority,
-            team: "Customer Service",
-            category: "Customer Issue",
-            tenant: tenantId,
-            tags: ["auto-generated", "survey"],
-            metadata: { responseId: response._id, surveyId: survey._id }
+        const { createAction } = require("../services/action/actionService");
+
+        // Create Action via unified service
+        const action = await createAction({
+            data: {
+                title: "Customer Feedback Review",
+                description,
+                priority,
+                team: "Customer Service",
+                category: "Customer Issue",
+                source: "ai_generated",
+                tags: ["auto-generated", "survey"],
+                problemStatement: description.substring(0, 2000),
+                metadata: { responseId: response._id, surveyId: survey._id }
+            },
+            tenantId,
+            userId: null,
+            options: { skipNotification: false }
         });
 
         await Logger.info("✅ Auto-generated action created", { actionId: action._id, responseId: response._id, surveyId: survey._id });
@@ -1273,7 +1281,7 @@ exports.getSurveyAnalytics = async (req, res, next) => {
         // Parse date range
         const days = parseInt(range.replace('d', '')) || 30;
         let rangeStart, rangeEnd, previousStart, previousEnd;
-        
+
         if (startDate && endDate) {
             rangeStart = new Date(startDate);
             rangeEnd = new Date(endDate);
@@ -1310,7 +1318,7 @@ exports.getSurveyAnalytics = async (req, res, next) => {
             if (response.rating !== null && response.rating !== undefined) {
                 return Number(response.rating);
             }
-            
+
             // Check answers for rating-type questions
             if (response.answers && Array.isArray(response.answers)) {
                 for (const answer of response.answers) {
@@ -1319,7 +1327,7 @@ exports.getSurveyAnalytics = async (req, res, next) => {
                     }
                 }
             }
-            
+
             return null;
         };
 
@@ -1328,7 +1336,7 @@ exports.getSurveyAnalytics = async (req, res, next) => {
             if (response.score !== null && response.score !== undefined) {
                 return Number(response.score);
             }
-            
+
             // Check answers for NPS-type questions (0-10 scale)
             if (response.answers && Array.isArray(response.answers)) {
                 for (const answer of response.answers) {
@@ -1337,14 +1345,14 @@ exports.getSurveyAnalytics = async (req, res, next) => {
                     }
                 }
             }
-            
+
             return null;
         };
 
         // ============================================================================
         // 1. OVERVIEW METRICS WITH TRENDS
         // ============================================================================
-        
+
         // Calculate average rating (using helper)
         const ratingsArray = responses
             .map(r => extractRating(r))
@@ -1373,7 +1381,7 @@ exports.getSurveyAnalytics = async (req, res, next) => {
 
         // Calculate NPS (using helper for score extraction)
         const { calculateNPS } = require("../utils/analyticsUtils");
-        
+
         // Enhance responses with extracted scores for NPS calculation
         const responsesWithScores = responses.map(r => ({
             ...r,
@@ -1383,7 +1391,7 @@ exports.getSurveyAnalytics = async (req, res, next) => {
             ...r,
             score: extractNPSScore(r)
         }));
-        
+
         const npsData = calculateNPS(responsesWithScores);
         const prevNpsData = calculateNPS(prevResponsesWithScores);
 
@@ -1401,9 +1409,9 @@ exports.getSurveyAnalytics = async (req, res, next) => {
             : 0;
 
         // Response rate and satisfaction
-        const totalInvited = survey.targetAudience?.emails?.length || 
-                            survey.targetAudience?.phones?.length || 
-                            totalResponses || 1;
+        const totalInvited = survey.targetAudience?.emails?.length ||
+            survey.targetAudience?.phones?.length ||
+            totalResponses || 1;
         const responseRate = totalInvited > 0
             ? Number(((totalResponses / totalInvited) * 100).toFixed(1))
             : 0;
@@ -1420,7 +1428,7 @@ exports.getSurveyAnalytics = async (req, res, next) => {
         // ============================================================================
         // 2. TRENDS DATA
         // ============================================================================
-        
+
         const responsesByDate = {};
         responses.forEach(r => {
             const date = new Date(r.createdAt).toISOString().split('T')[0];
@@ -1428,10 +1436,10 @@ exports.getSurveyAnalytics = async (req, res, next) => {
                 responsesByDate[date] = { date, count: 0, ratings: [], scores: [] };
             }
             responsesByDate[date].count++;
-            
+
             const rating = extractRating(r);
             if (rating !== null) responsesByDate[date].ratings.push(rating);
-            
+
             const score = extractNPSScore(r);
             if (score !== null) responsesByDate[date].scores.push(score);
         });
@@ -1482,11 +1490,11 @@ exports.getSurveyAnalytics = async (req, res, next) => {
         // ============================================================================
         // 3. SENTIMENT ANALYSIS
         // ============================================================================
-        
+
         const sentimentCounts = { positive: 0, neutral: 0, negative: 0 };
         const keywords = {};
         const themes = {};
-        
+
         responses.forEach(r => {
             if (r.analysis?.sentiment) {
                 sentimentCounts[r.analysis.sentiment]++;
@@ -1499,7 +1507,7 @@ exports.getSurveyAnalytics = async (req, res, next) => {
                     else sentimentCounts.negative++;
                 }
             }
-            
+
             if (r.analysis?.keywords) {
                 r.analysis.keywords.forEach(kw => {
                     keywords[kw] = (keywords[kw] || 0) + 1;
@@ -1525,7 +1533,7 @@ exports.getSurveyAnalytics = async (req, res, next) => {
         // ============================================================================
         // 4. DEMOGRAPHICS
         // ============================================================================
-        
+
         const deviceCounts = {};
         const locationCounts = {};
         const hourCounts = {};
@@ -1535,15 +1543,15 @@ exports.getSurveyAnalytics = async (req, res, next) => {
             // Device - use metadata if available, otherwise infer from IP or default
             const device = r.metadata?.device || r.device || 'Unknown';
             deviceCounts[device] = (deviceCounts[device] || 0) + 1;
-            
+
             // Location
             const location = r.metadata?.location || r.metadata?.city || r.location || 'Unknown';
             locationCounts[location] = (locationCounts[location] || 0) + 1;
-            
+
             // Time of day
             const hour = new Date(r.createdAt).getHours();
             hourCounts[hour] = (hourCounts[hour] || 0) + 1;
-            
+
             // Day of week
             const day = new Date(r.createdAt).getDay();
             dayCounts[day] = (dayCounts[day] || 0) + 1;
@@ -1585,7 +1593,7 @@ exports.getSurveyAnalytics = async (req, res, next) => {
         // ============================================================================
         // 5. QUESTION PERFORMANCE
         // ============================================================================
-        
+
         // Build question map from survey - support both string id and ObjectId
         const questionMap = {};
         (survey.questions || []).forEach((q, idx) => {
@@ -1608,16 +1616,16 @@ exports.getSurveyAnalytics = async (req, res, next) => {
         });
 
         const questionStats = {};
-        
+
         responses.forEach(r => {
             if (r.answers && Array.isArray(r.answers)) {
                 r.answers.forEach((answer, idx) => {
                     // Try to match by questionId (could be ObjectId or string)
                     const qIdStr = answer.questionId?.toString();
-                    
+
                     // Find matching question
                     let qInfo = questionMap[qIdStr];
-                    
+
                     // If not found, try to match by index
                     if (!qInfo && survey.questions[idx]) {
                         const fallbackQ = survey.questions[idx];
@@ -1627,13 +1635,13 @@ exports.getSurveyAnalytics = async (req, res, next) => {
                             type: fallbackQ.type
                         };
                     }
-                    
+
                     if (!qInfo) {
                         qInfo = { questionNumber: idx + 1, title: `Question ${idx + 1}`, type: 'unknown' };
                     }
-                    
+
                     const statKey = qInfo.questionNumber.toString();
-                    
+
                     if (!questionStats[statKey]) {
                         questionStats[statKey] = {
                             questionNumber: qInfo.questionNumber,
@@ -1644,7 +1652,7 @@ exports.getSurveyAnalytics = async (req, res, next) => {
                             ratings: []
                         };
                     }
-                    
+
                     if (answer.answer !== null && answer.answer !== undefined && answer.answer !== '') {
                         questionStats[statKey].responseCount++;
                         if (typeof answer.answer === 'number') {
@@ -1659,12 +1667,12 @@ exports.getSurveyAnalytics = async (req, res, next) => {
 
         const questionPerformance = Object.values(questionStats).map(q => {
             const totalAnswers = q.responseCount + q.skipCount;
-            const avgRating = q.ratings.length > 0 
+            const avgRating = q.ratings.length > 0
                 ? Number((q.ratings.reduce((a, b) => a + b, 0) / q.ratings.length).toFixed(2))
                 : 0;
             const completionRateQ = totalAnswers > 0 ? Number(((q.responseCount / totalAnswers) * 100).toFixed(1)) : 100;
             const skipRate = totalAnswers > 0 ? Number(((q.skipCount / totalAnswers) * 100).toFixed(1)) : 0;
-            
+
             return {
                 questionNumber: q.questionNumber,
                 title: q.title,
@@ -1692,7 +1700,7 @@ exports.getSurveyAnalytics = async (req, res, next) => {
         // ============================================================================
         // 6. FEEDBACK INSIGHTS
         // ============================================================================
-        
+
         // Use NPS categories to infer complaints/praises if analysis not available
         const complaints = responses.filter(r => {
             if (r.analysis?.classification?.isComplaint) return true;
@@ -1700,14 +1708,14 @@ exports.getSurveyAnalytics = async (req, res, next) => {
             const rating = extractRating(r);
             return (score !== null && score <= 6) || (rating !== null && rating <= 2);
         });
-        
+
         const praises = responses.filter(r => {
             if (r.analysis?.classification?.isPraise) return true;
             const score = extractNPSScore(r);
             const rating = extractRating(r);
             return (score !== null && score >= 9) || (rating !== null && rating >= 4);
         });
-        
+
         const urgent = responses.filter(r => {
             if (r.analysis?.urgency === 'high') return true;
             const score = extractNPSScore(r);
@@ -1807,7 +1815,7 @@ exports.getSurveyAnalytics = async (req, res, next) => {
         // ============================================================================
         // COMPILE FINAL RESPONSE
         // ============================================================================
-        
+
         const analytics = {
             overview: {
                 totalResponses,
@@ -1819,7 +1827,7 @@ exports.getSurveyAnalytics = async (req, res, next) => {
                 avgCompletionTime,
                 benchmarkComparison: 0
             },
-            
+
             nps: {
                 score: npsData.score !== null ? npsData.score : 0,
                 promoters: npsData.promoters || 0,
@@ -1827,18 +1835,18 @@ exports.getSurveyAnalytics = async (req, res, next) => {
                 detractors: npsData.detractors || 0,
                 trend: npsTrend,
                 distribution: {
-                    promoters: npsData.totalResponses > 0 
-                        ? Number(((npsData.promoters / npsData.totalResponses) * 100).toFixed(1)) 
+                    promoters: npsData.totalResponses > 0
+                        ? Number(((npsData.promoters / npsData.totalResponses) * 100).toFixed(1))
                         : 0,
-                    passives: npsData.totalResponses > 0 
-                        ? Number(((npsData.passives / npsData.totalResponses) * 100).toFixed(1)) 
+                    passives: npsData.totalResponses > 0
+                        ? Number(((npsData.passives / npsData.totalResponses) * 100).toFixed(1))
                         : 0,
-                    detractors: npsData.totalResponses > 0 
-                        ? Number(((npsData.detractors / npsData.totalResponses) * 100).toFixed(1)) 
+                    detractors: npsData.totalResponses > 0
+                        ? Number(((npsData.detractors / npsData.totalResponses) * 100).toFixed(1))
                         : 0
                 }
             },
-            
+
             trends: {
                 responsesByDate: responsesByDateArray,
                 ratingTrends,
@@ -1849,32 +1857,32 @@ exports.getSurveyAnalytics = async (req, res, next) => {
                 completionTrend,
                 satisfactionTrend: ratingTrend
             },
-            
+
             demographics: {
                 byDevice,
                 byLocation,
                 byTimeOfDay,
                 byDayOfWeek
             },
-            
+
             sentiment: {
                 breakdown: sentimentCounts,
                 percentages: {
-                    positive: totalResponses > 0 
-                        ? Number(((sentimentCounts.positive / totalResponses) * 100).toFixed(1)) 
+                    positive: totalResponses > 0
+                        ? Number(((sentimentCounts.positive / totalResponses) * 100).toFixed(1))
                         : 0,
-                    neutral: totalResponses > 0 
-                        ? Number(((sentimentCounts.neutral / totalResponses) * 100).toFixed(1)) 
+                    neutral: totalResponses > 0
+                        ? Number(((sentimentCounts.neutral / totalResponses) * 100).toFixed(1))
                         : 0,
-                    negative: totalResponses > 0 
-                        ? Number(((sentimentCounts.negative / totalResponses) * 100).toFixed(1)) 
+                    negative: totalResponses > 0
+                        ? Number(((sentimentCounts.negative / totalResponses) * 100).toFixed(1))
                         : 0
                 },
                 topKeywords,
                 emotionalTrends: [],
                 satisfactionDrivers: topThemes
             },
-            
+
             questions: {
                 performance: questionPerformance,
                 dropoffPoints,
@@ -1890,14 +1898,14 @@ exports.getSurveyAnalytics = async (req, res, next) => {
                     skipRate: q.skipRate
                 }))
             },
-            
+
             feedback: {
                 topComplaints,
                 topPraises,
                 urgentIssues,
                 actionableInsights
             },
-            
+
             surveyInfo: {
                 id: survey._id,
                 title: survey.title,
@@ -1921,7 +1929,7 @@ exports.getSurveyAnalytics = async (req, res, next) => {
         });
 
         res.status(200).json(analytics);
-        
+
     } catch (err) {
         await Logger.error("💥 Error fetching comprehensive survey analytics", {
             error: err.message,
@@ -2213,7 +2221,7 @@ exports.autoPublishScheduledSurveys = async () => {
                     recipientsCount: recipients.length
                 });
 
-              
+
             } catch (surveyError) {
                 console.error(`Failed to publish survey ${survey._id}:`, surveyError);
                 await Logger.error("Single survey auto-publish failed", {

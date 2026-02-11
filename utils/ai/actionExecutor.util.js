@@ -1,5 +1,11 @@
 // utils/ai/actionExecutor.util.js
-const Action = require("../../models/Action");
+// ============================================================================
+// Action Executor — Processes AI-determined actions from response analysis
+//
+// ✅ REFACTORED: All Action creation routed through actionService.createAction()
+// Non-action operations (STORE_METADATA, DASHBOARD_FLAG, etc.) remain unchanged.
+// ============================================================================
+
 const SurveyResponse = require("../../models/SurveyResponse");
 const Logger = require("../../utils/auditLog");
 
@@ -52,35 +58,65 @@ exports.execute = async ({
   // ─────────────────────────────────────────────────────────
   // Handle action array (can be old format or new format)
   // ─────────────────────────────────────────────────────────
-  const actionList = Array.isArray(actions) 
+  const actionList = Array.isArray(actions)
     ? (actions.actions || actions)  // Support both { actions: [...] } and [...]
     : [];
+
+  // Lazy-load actionService only if we have actions to create
+  let createAction = null;
 
   for (const action of actionList) {
     const actionType = typeof action === "string" ? action : action.type;
 
     // ─────────────────────────────────────────────────────────
     // CREATE_ACTION: Generate follow-up task
+    // ✅ REFACTORED: Routes through actionService.createAction
     // ─────────────────────────────────────────────────────────
     if (actionType === "CREATE_ACTION") {
       try {
-        const created = await Action.create({
-          title: getActionTitle(insight, response),
-          description: buildActionDescription(insight, response, survey),
-          priority: determinePriority(insight, response),
-          category: determineCategory(insight),
-          tenant: tenantId,
-          status: "pending",
-          source: "ai_generated",
-          dueDate: calculateDueDate(determinePriority(insight, response)),
-          metadata: {
-            surveyId: survey._id,
-            responseId: response._id,
-            sentiment: insight.sentiment,
-            urgency: insight.urgency,
-            triggeredBy: actions.reasons || ["rule_engine"]
+        if (!createAction) {
+          createAction = require("../../services/action/actionService").createAction;
+        }
+
+        const priority = determinePriority(insight, response);
+        const description = buildActionDescription(insight, response, survey);
+
+        const created = await createAction({
+          data: {
+            title: getActionTitle(insight, response),
+            description,
+            priority,
+            category: determineCategory(insight),
+            source: "ai_generated",
+            tags: ["auto", "survey", insight.sentiment].filter(Boolean),
+            // Phase 1 fields
+            problemStatement: insight.summary || description.substring(0, 2000),
+            rootCause: {
+              category: mapInsightToRootCause(insight),
+              summary: insight.summary || null
+            },
+            priorityReason: `AI analysis: ${insight.sentiment} sentiment, ${insight.urgency || 'normal'} urgency`,
+            evidence: {
+              responseCount: 1,
+              respondentCount: 1,
+              responseIds: response._id ? [response._id] : [],
+              commentExcerpts: [{
+                text: (response.review || insight.summary || '').substring(0, 500),
+                sentiment: insight.sentiment || 'neutral',
+                responseId: response._id || undefined
+              }],
+              confidenceScore: insight.confidence != null ? Math.round(insight.confidence * 100) : null
+            },
+            metadata: {
+              surveyId: survey._id,
+              responseId: response._id,
+              sentiment: insight.sentiment,
+              urgency: insight.urgency
+            }
           },
-          tags: ["auto", "survey", insight.sentiment].filter(Boolean)
+          tenantId,
+          userId: null,  // System-triggered
+          options: { skipNotification: false }
         });
         results.push({ action: actionType, status: "done", id: created._id });
       } catch (err) {
@@ -90,24 +126,43 @@ exports.execute = async ({
 
     // ─────────────────────────────────────────────────────────
     // CREATE_CALLBACK: Customer requested contact
+    // ✅ REFACTORED: Routes through actionService.createAction
     // ─────────────────────────────────────────────────────────
     if (actionType === "CREATE_CALLBACK") {
       try {
-        const created = await Action.create({
-          title: "Customer Callback Requested",
-          description: `Customer requested to be contacted.\n\nFeedback: "${response.review || 'No review provided'}"`,
-          priority: "high",
-          category: "Callback",
-          tenant: tenantId,
-          status: "pending",
-          source: "ai_generated",
-          dueDate: calculateDueDate("high"),
-          metadata: {
-            surveyId: survey._id,
-            responseId: response._id,
-            callbackRequested: true
+        if (!createAction) {
+          createAction = require("../../services/action/actionService").createAction;
+        }
+
+        const created = await createAction({
+          data: {
+            title: "Customer Callback Requested",
+            description: `Customer requested to be contacted.\n\nFeedback: "${response.review || 'No review provided'}"`,
+            priority: "high",
+            category: "Callback",
+            source: "ai_generated",
+            tags: ["auto", "callback", "urgent"],
+            problemStatement: "Customer explicitly requested to be contacted",
+            urgencyReason: "Direct callback request from customer",
+            evidence: {
+              responseCount: 1,
+              respondentCount: 1,
+              responseIds: response._id ? [response._id] : [],
+              commentExcerpts: [{
+                text: (response.review || 'Callback requested').substring(0, 500),
+                sentiment: 'negative',
+                responseId: response._id || undefined
+              }]
+            },
+            metadata: {
+              surveyId: survey._id,
+              responseId: response._id,
+              sentiment: insight.sentiment
+            }
           },
-          tags: ["auto", "callback", "urgent"]
+          tenantId,
+          userId: null,
+          options: { skipNotification: false }
         });
         results.push({ action: actionType, status: "done", id: created._id });
       } catch (err) {
@@ -117,24 +172,42 @@ exports.execute = async ({
 
     // ─────────────────────────────────────────────────────────
     // CREATE_SUGGESTION: Low priority improvement idea
+    // ✅ REFACTORED: Routes through actionService.createAction
     // ─────────────────────────────────────────────────────────
     if (actionType === "CREATE_SUGGESTION") {
       try {
-        const created = await Action.create({
-          title: "Customer Suggestion",
-          description: `Customer provided a suggestion.\n\nFeedback: "${response.review || 'See survey response'}"`,
-          priority: "low",
-          category: "Improvement",
-          tenant: tenantId,
-          status: "pending",
-          source: "ai_generated",
-          dueDate: calculateDueDate("low"),
-          metadata: {
-            surveyId: survey._id,
-            responseId: response._id,
-            isSuggestion: true
+        if (!createAction) {
+          createAction = require("../../services/action/actionService").createAction;
+        }
+
+        const created = await createAction({
+          data: {
+            title: "Customer Suggestion",
+            description: `Customer provided a suggestion.\n\nFeedback: "${response.review || 'See survey response'}"`,
+            priority: "low",
+            category: "Improvement",
+            source: "ai_generated",
+            tags: ["auto", "suggestion", "improvement"],
+            problemStatement: insight.summary || "Customer suggestion for improvement",
+            evidence: {
+              responseCount: 1,
+              respondentCount: 1,
+              responseIds: response._id ? [response._id] : [],
+              commentExcerpts: [{
+                text: (response.review || 'Suggestion provided').substring(0, 500),
+                sentiment: insight.sentiment || 'neutral',
+                responseId: response._id || undefined
+              }]
+            },
+            metadata: {
+              surveyId: survey._id,
+              responseId: response._id,
+              sentiment: insight.sentiment
+            }
           },
-          tags: ["auto", "suggestion", "improvement"]
+          tenantId,
+          userId: null,
+          options: { skipNotification: false }
         });
         results.push({ action: actionType, status: "done", id: created._id });
       } catch (err) {
@@ -225,12 +298,12 @@ function determinePriority(insight, response) {
   if (insight.urgency === "high") return "high";
   if (insight.sentiment === "negative" && response.score !== undefined && response.score <= 3) return "high";
   if (response.rating && response.rating <= 1) return "high";
-  
+
   // Medium priority conditions
   if (insight.sentiment === "negative") return "medium";
   if (response.score !== undefined && response.score <= 6) return "medium";
   if (response.rating && response.rating <= 2) return "medium";
-  
+
   return "low";
 }
 
@@ -251,31 +324,57 @@ function calculateDueDate(priority) {
   }
 }
 
+/**
+ * Map AI insight themes/keywords to rootCause category enum
+ */
+function mapInsightToRootCause(insight) {
+  const text = [
+    ...(insight.themes || []),
+    ...(insight.keywords || []),
+    insight.summary || ''
+  ].join(' ').toLowerCase();
+
+  const mapping = {
+    'compensation': 'compensation', 'salary': 'compensation', 'pay': 'compensation',
+    'process': 'process', 'workflow': 'process',
+    'communication': 'communication', 'transparency': 'communication',
+    'management': 'management', 'leadership': 'management',
+    'workload': 'workload', 'burnout': 'workload', 'stress': 'workload',
+    'culture': 'culture', 'diversity': 'culture',
+    'resources': 'resources', 'tools': 'resources', 'training': 'resources'
+  };
+
+  for (const [keyword, category] of Object.entries(mapping)) {
+    if (text.includes(keyword)) return category;
+  }
+  return 'unknown';
+}
+
 function buildActionDescription(insight, response, survey) {
   const parts = [];
-  
+
   parts.push(`Survey: ${survey?.title || "Unknown"}`);
   parts.push(`Sentiment: ${insight.sentiment || "N/A"}`);
-  
+
   if (insight.urgency) parts.push(`Urgency: ${insight.urgency}`);
   if (response.rating) parts.push(`Rating: ${response.rating}/5`);
   if (response.score !== undefined) parts.push(`NPS Score: ${response.score}/10`);
   if (insight.summary) parts.push(`\nSummary: ${insight.summary}`);
-  
+
   if (response.review) {
-    const truncated = response.review.length > 300 
-      ? response.review.substring(0, 300) + "..." 
+    const truncated = response.review.length > 300
+      ? response.review.substring(0, 300) + "..."
       : response.review;
     parts.push(`\nCustomer Feedback: "${truncated}"`);
   }
-  
+
   if (insight.keywords?.length > 0) {
     parts.push(`\nKey Topics: ${insight.keywords.slice(0, 5).join(", ")}`);
   }
-  
+
   if (insight.emotions?.length > 0) {
     parts.push(`Detected Emotions: ${insight.emotions.join(", ")}`);
   }
-  
+
   return parts.join("\n");
 }

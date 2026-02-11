@@ -222,6 +222,10 @@ ActionSchema.index({ tenant: 1, assignedTo: 1 });
 ActionSchema.index({ tenant: 1, dueDate: 1 });
 ActionSchema.index({ tenant: 1, createdAt: -1 });
 
+// Indexes for trend background job (avoids full collection scan)
+ActionSchema.index({ source: 1 });
+ActionSchema.index({ source: 1, 'trendData.calculatedAt': 1 });
+
 // Virtual for checking if overdue
 ActionSchema.virtual('isOverdue').get(function () {
   return this.dueDate && this.status !== 'resolved' && new Date() > this.dueDate;

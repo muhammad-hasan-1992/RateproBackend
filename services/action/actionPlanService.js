@@ -333,6 +333,69 @@ async function completeActionPlan({ actionPlanId, data, tenantId, userId }) {
 }
 
 /**
+ * Cancel action plan — resets parent action's hasActionPlan flag
+ */
+async function cancelActionPlan({ actionPlanId, data, tenantId, userId }) {
+    const actionPlan = await ActionPlan.findOne({
+        _id: actionPlanId,
+        tenant: tenantId,
+        isDeleted: false
+    });
+
+    if (!actionPlan) {
+        throw { statusCode: 404, message: "Action plan not found" };
+    }
+
+    if (['completed', 'cancelled'].includes(actionPlan.status)) {
+        throw { statusCode: 400, message: `Cannot cancel plan with status: ${actionPlan.status}` };
+    }
+
+    actionPlan.status = 'cancelled';
+    actionPlan.rejectedBy = userId;
+    actionPlan.rejectedAt = new Date();
+    actionPlan.rejectionReason = data?.reason || 'Cancelled by user';
+    await actionPlan.save();
+
+    // ── Sync hasActionPlan flag on parent action ────────────────
+    await Action.findByIdAndUpdate(actionPlan.action, { hasActionPlan: false });
+
+    Logger.info("cancelActionPlan", "Action plan cancelled", {
+        context: { actionPlanId, tenantId, cancelledBy: userId }
+    });
+
+    return actionPlan;
+}
+
+/**
+ * Soft-delete action plan — resets parent action's hasActionPlan flag
+ */
+async function softDeleteActionPlan({ actionPlanId, tenantId, userId }) {
+    const actionPlan = await ActionPlan.findOne({
+        _id: actionPlanId,
+        tenant: tenantId,
+        isDeleted: false
+    });
+
+    if (!actionPlan) {
+        throw { statusCode: 404, message: "Action plan not found" };
+    }
+
+    actionPlan.isDeleted = true;
+    actionPlan.deletedAt = new Date();
+    actionPlan.deletedBy = userId;
+    await actionPlan.save();
+
+    // ── Sync hasActionPlan flag on parent action ────────────────
+    await Action.findByIdAndUpdate(actionPlan.action, { hasActionPlan: false });
+
+    Logger.info("softDeleteActionPlan", "Action plan soft-deleted", {
+        context: { actionPlanId, tenantId, deletedBy: userId }
+    });
+
+    return actionPlan;
+}
+
+/**
  * Update progress metrics for an action plan
  */
 async function updateProgress(actionPlanId) {
@@ -357,5 +420,7 @@ module.exports = {
     startExecution,
     updateActionPlan,
     completeActionPlan,
+    cancelActionPlan,
+    softDeleteActionPlan,
     updateProgress
 };

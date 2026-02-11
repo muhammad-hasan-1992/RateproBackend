@@ -33,11 +33,11 @@ const NEGATIVE_KEYWORDS = [
 function requestsContact(response) {
   const text = [
     response.review,
-    ...(response.answers || []).map(a => 
+    ...(response.answers || []).map(a =>
       typeof a.answer === 'string' ? a.answer : ''
     )
   ].filter(Boolean).join(" ").toLowerCase();
-  
+
   return CONTACT_ME_KEYWORDS.some(kw => text.includes(kw));
 }
 
@@ -47,11 +47,11 @@ function requestsContact(response) {
 function containsNegativeKeywords(response) {
   const text = [
     response.review,
-    ...(response.answers || []).map(a => 
+    ...(response.answers || []).map(a =>
       typeof a.answer === 'string' ? a.answer : ''
     )
   ].filter(Boolean).join(" ").toLowerCase();
-  
+
   const found = NEGATIVE_KEYWORDS.filter(kw => text.includes(kw));
   return { hasNegativeKeywords: found.length > 0, keywords: found };
 }
@@ -88,7 +88,7 @@ const ACTION_RULES = {
   // ─────────────────────────────────────────────────────────
   // HIGH PRIORITY TRIGGERS
   // ─────────────────────────────────────────────────────────
-  
+
   // Negative sentiment with HIGH urgency → High priority
   negativeHighUrgency: {
     condition: (insight) => insight.sentiment === "negative" && insight.urgency === "high",
@@ -161,7 +161,7 @@ const ACTION_RULES = {
 
   // NPS Detractor (4-6) → Medium priority
   detractor: {
-    condition: (insight, response) => 
+    condition: (insight, response) =>
       response.score !== undefined && response.score >= 4 && response.score <= 6,
     action: {
       title: "NPS Detractor Identified",
@@ -251,6 +251,9 @@ exports.evaluateRules = (insight, response) => {
 /**
  * Create action from AI insight
  * Client Requirement 5: Automatically trigger actions based on rules and AI signals
+ * 
+ * ✅ REFACTORED: Routes through actionService.createAction() for unified creation.
+ * SLA fields are applied post-creation since they're outside the Joi schema.
  */
 exports.createActionFromInsight = async ({
   insight,
@@ -258,8 +261,10 @@ exports.createActionFromInsight = async ({
   survey,
   tenantId
 }) => {
+  const { createAction } = require("../../services/action/actionService");
+
   // Evaluate all rules
-  const triggeredRules = this.evaluateRules(insight, response);
+  const triggeredRules = exports.evaluateRules(insight, response);
 
   // If no rules triggered and AI didn't recommend action, skip
   if (triggeredRules.length === 0 && !insight.shouldGenerateAction) {
@@ -270,7 +275,7 @@ exports.createActionFromInsight = async ({
   // Find the highest priority rule
   const priorityOrder = { high: 3, medium: 2, low: 1 };
   const rulesToCreate = triggeredRules.filter(r => r.createAction !== false);
-  
+
   if (rulesToCreate.length === 0 && !insight.shouldGenerateAction) {
     // Only praise/recognition triggered, no action needed
     Logger.info("autoAction", "Positive feedback tracked (no action created)", {
@@ -291,39 +296,72 @@ exports.createActionFromInsight = async ({
   // Build description from insight
   const description = buildActionDescription(insight, response, survey);
 
-  // Calculate due date based on priority
-  const dueDate = calculateDueDate(primaryRule.priority);
-
-  // Create the action
-  const action = await Action.create({
+  // ── Route through actionService.createAction() ────────────────
+  const serviceData = {
     title: primaryRule.title,
     description,
     priority: primaryRule.priority,
     category: primaryRule.category,
-    tenant: tenantId,
-    status: "pending",
     source: "ai_generated",
-    dueDate,
-    // ✅ NEW: SLA Tracking fields
-    // Client Requirement 6.3: SLA tracking
-    sla: {
-      targetResolutionTime: dueDate,
-      remindersSent: 0,
-      nextReminderAt: calculateNextReminder(primaryRule.priority),
-      isBreached: false
+    tags: [...new Set([...primaryRule.tags, ...(insight.themes || []).slice(0, 3)])],
+
+    // Phase 1 fields
+    problemStatement: insight.summary || description.substring(0, 2000),
+    rootCause: {
+      category: mapInsightToRootCause(insight),
+      summary: insight.summary || null
+    },
+    priorityReason: `Triggered by rules: ${triggeredRules.map(r => r.ruleName).join(', ')}`,
+    urgencyReason: insight.urgency === 'high' ? `High urgency detected — sentiment: ${insight.sentiment}` : null,
+    evidence: {
+      responseCount: 1,
+      respondentCount: 1,
+      responseIds: response._id ? [response._id] : [],
+      commentExcerpts: [{
+        text: (response.review || insight.summary || description).substring(0, 500),
+        sentiment: insight.sentiment || 'neutral',
+        responseId: response._id || undefined
+      }],
+      confidenceScore: insight.confidence != null ? Math.round(insight.confidence * 100) : null
     },
     metadata: {
       surveyId: survey._id,
       responseId: response._id,
       sentiment: insight.sentiment,
       confidence: insight.confidence,
-      urgency: insight.urgency,
-      triggeredRules: triggeredRules.map(r => r.ruleName)
-    },
-    tags: [...new Set([...primaryRule.tags, ...(insight.themes || []).slice(0, 3)])]
+      urgency: insight.urgency
+    }
+  };
+
+  const action = await createAction({
+    data: serviceData,
+    tenantId,
+    userId: null,  // System-triggered — no human user
+    options: { skipNotification: false }
   });
 
-  Logger.info("autoAction", "Action created from insight", {
+  // ── Post-creation: Apply SLA fields (outside Joi schema) ──────
+  // These are Action model fields not part of the standard createAction flow
+  try {
+    const dueDate = calculateDueDate(primaryRule.priority);
+    await Action.findByIdAndUpdate(action._id, {
+      $set: {
+        sla: {
+          targetResolutionTime: dueDate,
+          remindersSent: 0,
+          nextReminderAt: calculateNextReminder(primaryRule.priority),
+          isBreached: false
+        },
+        'metadata.triggeredRules': triggeredRules.map(r => r.ruleName)
+      }
+    });
+  } catch (slaErr) {
+    Logger.error("autoAction", "Failed to set SLA fields (non-blocking)", {
+      context: { actionId: action._id, error: slaErr.message }
+    });
+  }
+
+  Logger.info("autoAction", "Action created from insight via unified service", {
     context: {
       actionId: action._id,
       responseId: response._id,
@@ -345,7 +383,7 @@ function buildActionDescription(insight, response, survey) {
 
   parts.push(`Survey: ${survey.title || "Unknown"}`);
   parts.push(`Sentiment: ${insight.sentiment || "N/A"}`);
-  
+
   if (insight.urgency) {
     parts.push(`Urgency: ${insight.urgency}`);
   }
@@ -382,7 +420,7 @@ function buildActionDescription(insight, response, survey) {
  */
 function calculateDueDate(priority) {
   const now = new Date();
-  
+
   switch (priority) {
     case "high":
       // Due within 4 hours
@@ -417,6 +455,32 @@ function calculateNextReminder(priority) {
     default:
       return new Date(now.getTime() + 24 * 60 * 60 * 1000);
   }
+}
+
+/**
+ * Map AI insight themes/keywords to rootCause category enum
+ */
+function mapInsightToRootCause(insight) {
+  const text = [
+    ...(insight.themes || []),
+    ...(insight.keywords || []),
+    insight.summary || ''
+  ].join(' ').toLowerCase();
+
+  const mapping = {
+    'compensation': 'compensation', 'salary': 'compensation', 'pay': 'compensation',
+    'process': 'process', 'workflow': 'process', 'procedure': 'process',
+    'communication': 'communication', 'transparency': 'communication',
+    'management': 'management', 'leadership': 'management', 'supervisor': 'management',
+    'workload': 'workload', 'burnout': 'workload', 'stress': 'workload',
+    'culture': 'culture', 'diversity': 'culture', 'environment': 'culture',
+    'resources': 'resources', 'tools': 'resources', 'training': 'resources'
+  };
+
+  for (const [keyword, category] of Object.entries(mapping)) {
+    if (text.includes(keyword)) return category;
+  }
+  return 'unknown';
 }
 
 /**
@@ -466,7 +530,7 @@ exports.checkRepeatedComplaints = async (tenantId, options = {}) => {
  */
 exports.escalateAction = async (actionId, reason) => {
   const action = await Action.findById(actionId);
-  
+
   if (!action) {
     throw new Error("Action not found");
   }
@@ -487,7 +551,7 @@ exports.escalateAction = async (actionId, reason) => {
 
   // Update due date for urgency
   action.dueDate = calculateDueDate(action.priority);
-  
+
   action.tags.push("escalated");
 
   await action.save();

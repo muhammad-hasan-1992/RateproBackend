@@ -162,23 +162,29 @@ router.post("/:id/create", async (req, res) => {
             assignee = template.assignment?.defaultAssignee;
         }
 
-        const action = await Action.create({
-            tenant: req.user.tenant,
-            title: title || template.defaults.title,
-            description: description || template.defaults.description,
-            priority: priority || template.defaults.priority,
-            status: template.defaults.status,
-            category: template.defaults.category,
-            dueDate: actionDueDate,
-            assignedTo: assignee,
-            assignedToTeam: assigneeTeam,
-            autoAssigned,
-            createdBy: req.user._id,
-            metadata: {
-                ...metadata,
-                createdFromTemplate: template._id,
-                templateName: template.name
-            }
+        const { createAction } = require("../services/action/actionService");
+
+        const action = await createAction({
+            data: {
+                title: title || template.defaults.title,
+                description: description || template.defaults.description,
+                priority: priority || template.defaults.priority,
+                category: template.defaults.category,
+                dueDate: actionDueDate,
+                assignedTo: assignee,
+                team: assigneeTeam,
+                source: "manual",
+                // Phase 1 field
+                problemStatement: description || template.defaults.description || template.defaults.title,
+                metadata: {
+                    ...metadata,
+                    createdFromTemplate: template._id,
+                    templateName: template.name
+                }
+            },
+            tenantId: req.user.tenant,
+            userId: req.user._id,
+            options: { skipNotification: false }
         });
 
         // Update template usage stats

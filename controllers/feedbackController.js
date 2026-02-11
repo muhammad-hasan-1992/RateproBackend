@@ -202,15 +202,27 @@ exports.generateActions = async (req, res) => {
       if (fb.sentiment === "negative") priority = "high";
       if (fb.categories && fb.categories.includes("safety")) priority = "high";
 
-      const action = await Action.create({
-        feedback: fb._id,
-        description: `Follow up on: ${fb.categories?.join(", ") || "General feedback"}. Response excerpt: ${fb.response?.review?.slice(0, 200) || ""
-          }`,
-        priority,
-        assignedTo: value.autoAssignTo || null,
-        team: fb.categories?.[0] || "operations",
-        tenant: req.tenantId,
-        status: "open",
+      const { createAction } = require("../services/action/actionService");
+
+      const action = await createAction({
+        data: {
+          title: `Follow up: ${fb.categories?.join(", ") || "General feedback"}`,
+          description: `Follow up on: ${fb.categories?.join(", ") || "General feedback"}. Response excerpt: ${fb.response?.review?.slice(0, 200) || ""
+            }`,
+          priority,
+          feedbackId: fb._id,
+          assignedTo: value.autoAssignTo || null,
+          team: fb.categories?.[0] || "operations",
+          source: "ai_generated",
+          problemStatement: fb.response?.review?.slice(0, 2000) || `Follow up on: ${fb.categories?.join(", ") || "General feedback"}`,
+          metadata: {
+            responseId: fb.response?._id,
+            sentiment: fb.sentiment
+          }
+        },
+        tenantId: req.tenantId,
+        userId: req.user?._id || null,
+        options: { skipNotification: true }
       });
 
       created.push(action);

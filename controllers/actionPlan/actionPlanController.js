@@ -14,7 +14,8 @@ const Logger = require("../../utils/logger");
  */
 exports.createActionPlan = async (req, res) => {
     try {
-        const { actionId } = req.params;
+        // Route param is :id (from actionRoutes.js: /:id/plan)
+        const actionId = req.params.id;
         const tenantId = req.tenantId || req.user.tenant;
         const userId = req.user._id;
 
@@ -50,15 +51,23 @@ exports.createActionPlan = async (req, res) => {
  */
 exports.getActionPlan = async (req, res) => {
     try {
-        const { actionId } = req.params;
+        // Route param is :id (from actionRoutes.js: /:id/plan)
+        const actionId = req.params.id;
         const tenantId = req.tenantId || req.user.tenant;
 
         const result = await actionPlanService.getActionPlanByAction(actionId, tenantId);
 
+        // Return 200 with null data when no plan exists (not 404).
+        // The action resource exists — it simply has no plan yet.
+        // 404 should mean "this URL/resource doesn't exist at all".
         if (!result) {
-            return res.status(404).json({
-                success: false,
-                message: "No action plan found for this action"
+            return res.status(200).json({
+                success: true,
+                data: {
+                    actionPlan: null,
+                    steps: [],
+                    message: "No action plan created yet for this action"
+                }
             });
         }
 

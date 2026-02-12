@@ -14,10 +14,16 @@ const {
  * @query range - Time range (7d, 30d, 90d) - default: 30d
  */
 exports.getOperationalDashboard = asyncHandler(async (req, res) => {
+    const start = Date.now();
     try {
         const { range = '30d' } = req.query;
         const tenantId = req.tenantId;
-        const userId = req.user?._id;
+        if (!tenantId) {
+            return res.status(403).json({
+                success: false,
+                message: "Tenant context required"
+            });
+        }
 
         const days = parseInt(range.replace('d', '')) || 30;
         const startDate = new Date();
@@ -36,6 +42,13 @@ exports.getOperationalDashboard = asyncHandler(async (req, res) => {
             generatedAt: new Date()
         };
 
+        const duration = Date.now() - start;
+        if (duration > 500) {
+            Logger.warn("getOperationalDashboard", `Slow analytics endpoint: ${duration}ms`, {
+                context: { tenantId, duration, range }
+            });
+        }
+
         return res.status(200).json({
             success: true,
             message: "Operational dashboard data fetched successfully",
@@ -47,15 +60,15 @@ exports.getOperationalDashboard = asyncHandler(async (req, res) => {
             error,
             context: {
                 tenantId: req.tenantId || req.user?.tenant,
-                userId: req.user?._id
+                userId: req.user?._id,
+                duration: Date.now() - start
             },
             req
         });
 
         return res.status(500).json({
             success: false,
-            message: "Failed to fetch operational dashboard data",
-            error: error.message
+            message: "Failed to fetch operational dashboard data"
         });
     }
 });

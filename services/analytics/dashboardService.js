@@ -218,37 +218,46 @@ exports.calculateNPSScore = async (tenantId, startDate) => {
 
 /**
  * Calculate Response Rate for surveys
+ * Uses period-over-period SurveyResponse aggregation for real trend data.
+ * Note: current rate is 0 because view/open tracking is not yet implemented.
  */
 exports.calculateResponseRate = async (tenantId, startDate) => {
     try {
-        const surveys = await Survey.find({
+        // Current period response count
+        const currentResponses = await SurveyResponse.countDocuments({
             tenant: tenantId,
             createdAt: { $gte: startDate }
-        }).select("_id totalResponses");
+        });
 
-        const totalResponses = surveys.reduce(
-            (sum, survey) => sum + (survey.totalResponses || 0),
-            0
-        );
+        // Total surveys for context
+        const totalSurveys = await Survey.countDocuments({ tenant: tenantId });
 
-        const estimatedViews = Math.floor(totalResponses * 1.5);
-        const responseRate =
-            totalResponses > 0
-                ? Math.round((totalResponses / estimatedViews) * 100)
-                : 68;
+        // Previous period for trend calculation
+        const periodDays = Math.round((new Date() - startDate) / (1000 * 60 * 60 * 24));
+        const previousStart = new Date(startDate);
+        previousStart.setDate(previousStart.getDate() - periodDays);
+
+        const previousResponses = await SurveyResponse.countDocuments({
+            tenant: tenantId,
+            createdAt: { $gte: previousStart, $lt: startDate }
+        });
+
+        const trend = previousResponses > 0
+            ? Number(((currentResponses - previousResponses) / previousResponses * 100).toFixed(1))
+            : 0;
 
         return {
-            current: responseRate,
-            trend: Math.random() > 0.5 ? 2 : -2,
-            total: estimatedViews,
-            completed: totalResponses
+            current: 0,  // No view tracking — honest zero until implemented
+            trend,
+            total: totalSurveys,
+            completed: currentResponses
         };
     } catch (error) {
         Logger.error("calculateResponseRate", "Error calculating response rate", {
             error,
             context: { tenantId, startDate }
         });
-        return { current: 68, trend: -2, total: 1245, completed: 847 };
+        return { current: 0, trend: 0, total: 0, completed: 0 };
     }
 };
 
@@ -275,50 +284,72 @@ exports.calculateAlertCounts = async (tenantId) => {
             error,
             context: { tenantId }
         });
-        return { critical: 3, warning: 12, info: 8 };
+        return { critical: 0, warning: 0, info: 0 };
     }
 };
 
 /**
- * Calculate SLA Metrics
+ * Calculate SLA Metrics using aggregation pipeline
+ * Replaces in-memory filtering for scalability
  */
 exports.calculateSLAMetrics = async (tenantId, startDate) => {
     try {
-        const actions = await Action.find({ tenant: tenantId, createdAt: { $gte: startDate } });
-
-        if (actions.length === 0) {
-            return { averageResponseTime: "N/A", onTimeResolution: 0, overdueActions: 0 };
-        }
-
         const now = new Date();
-        const overdueActions = actions.filter(
-            (action) => action.dueDate && action.dueDate < now && action.status !== "resolved"
-        ).length;
 
-        const resolvedActions = actions.filter((action) => action.status === "resolved");
-        const onTimeResolved = resolvedActions.filter(
-            (action) => !action.dueDate || (action.completedAt && action.completedAt <= action.dueDate)
-        ).length;
+        const slaAgg = await Action.aggregate([
+            { $match: { tenant: new mongoose.Types.ObjectId(tenantId), createdAt: { $gte: startDate } } },
+            {
+                $facet: {
+                    overdue: [
+                        { $match: { dueDate: { $lt: now }, status: { $ne: "resolved" } } },
+                        { $count: "count" }
+                    ],
+                    resolved: [
+                        { $match: { status: "resolved" } },
+                        {
+                            $project: {
+                                resolutionMs: {
+                                    $subtract: [
+                                        { $ifNull: ["$completedAt", "$updatedAt"] },
+                                        "$createdAt"
+                                    ]
+                                },
+                                onTime: {
+                                    $cond: [
+                                        {
+                                            $or: [
+                                                { $eq: ["$dueDate", null] },
+                                                { $lte: [{ $ifNull: ["$completedAt", "$updatedAt"] }, "$dueDate"] }
+                                            ]
+                                        },
+                                        1, 0
+                                    ]
+                                }
+                            }
+                        },
+                        {
+                            $group: {
+                                _id: null,
+                                avgResolutionMs: { $avg: "$resolutionMs" },
+                                onTimeCount: { $sum: "$onTime" },
+                                totalResolved: { $sum: 1 }
+                            }
+                        }
+                    ]
+                }
+            }
+        ]);
 
-        const onTimeResolution =
-            resolvedActions.length > 0
-                ? Math.round((onTimeResolved / resolvedActions.length) * 100)
-                : 0;
-
-        // Calculate real average response time from createdAt to resolvedAt/completedAt
-        const actionsWithResolutionTime = resolvedActions.filter(
-            (action) => action.completedAt || action.resolvedAt
-        );
+        const overdueCount = slaAgg[0]?.overdue[0]?.count || 0;
+        const resolvedData = slaAgg[0]?.resolved[0];
 
         let averageResponseTime = "N/A";
-        if (actionsWithResolutionTime.length > 0) {
-            const totalHours = actionsWithResolutionTime.reduce((sum, action) => {
-                const resolvedAt = action.completedAt || action.resolvedAt;
-                const diffMs = resolvedAt - action.createdAt;
-                return sum + (diffMs / (1000 * 60 * 60)); // Convert to hours
-            }, 0);
-            const avgHours = totalHours / actionsWithResolutionTime.length;
+        let onTimeResolution = 0;
 
+        if (resolvedData && resolvedData.totalResolved > 0) {
+            onTimeResolution = Math.round((resolvedData.onTimeCount / resolvedData.totalResolved) * 100);
+
+            const avgHours = (resolvedData.avgResolutionMs || 0) / (1000 * 60 * 60);
             if (avgHours < 1) {
                 averageResponseTime = `${Math.round(avgHours * 60)} mins`;
             } else if (avgHours < 24) {
@@ -331,7 +362,7 @@ exports.calculateSLAMetrics = async (tenantId, startDate) => {
         return {
             averageResponseTime,
             onTimeResolution,
-            overdueActions
+            overdueActions: overdueCount
         };
     } catch (error) {
         Logger.error("calculateSLAMetrics", "Error calculating SLA metrics", {
@@ -524,7 +555,7 @@ exports.getVolumeTrend = async (tenantId, startDate, days) => {
             const totalCount = weekResponses.reduce((sum, t) => sum + (t.count || 0), 0);
             weeklyData.push({
                 label: `Week ${i + 1}`,
-                surveys: Math.ceil(totalCount / 10) || 0, // Estimated surveys
+                surveys: 0, // Not available from volume data — requires separate query
                 responses: totalCount
             });
         }

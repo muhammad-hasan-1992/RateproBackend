@@ -72,10 +72,7 @@ const { analyzeFeedback } = require("../controllers/feedback/analyzeFeedback.con
 const { generateActions } = require("../controllers/feedback/generateActions.controller");
 const { followUp } = require("../controllers/feedback/followUp.controller");
 
-const {
-  getExecutiveDashboard,
-  getOperationalDashboard,
-} = require("../controllers/dashboardController");
+// Legacy dashboard routes now redirect to /api/analytics/* — see bottom of file
 
 
 // ============================================================================
@@ -338,7 +335,7 @@ router.post(
 
 
 // ============================================================================
-// 📈 DASHBOARD ROUTES (Legacy - Consider moving to /api/dashboard)
+// 📈 DASHBOARD ROUTES (DEPRECATED — Redirects to /api/analytics/*)
 // ============================================================================
 
 router.get(
@@ -346,7 +343,9 @@ router.get(
   tenantCheck,
   allowRoles("admin", "companyAdmin"),
   allowPermission("dashboard:view"),
-  getExecutiveDashboard
+  (req, res) => {
+    res.redirect(307, `/api/analytics/executive?${new URLSearchParams(req.query)}`);
+  }
 );
 
 router.get(
@@ -354,7 +353,9 @@ router.get(
   tenantCheck,
   allowRoles("admin", "companyAdmin"),
   allowPermission("dashboard:view"),
-  getOperationalDashboard
+  (req, res) => {
+    res.redirect(307, `/api/analytics/operational?${new URLSearchParams(req.query)}`);
+  }
 );
 
 

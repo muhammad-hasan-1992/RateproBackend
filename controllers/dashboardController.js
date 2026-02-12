@@ -1,9 +1,9 @@
 // controllers/dashboardController.js
+// DEPRECATED: Legacy dashboard controller — routes now redirect to /api/analytics/*
 const Survey = require("../models/Survey");
 const SurveyResponse = require("../models/SurveyResponse");
 const FeedbackAnalysis = require("../models/FeedbackAnalysis");
 const Action = require("../models/Action");
-const DashboardMetrics = require("../models/DashboardMetrics");
 const mongoose = require("mongoose");
 const Logger = require("../utils/logger");
 

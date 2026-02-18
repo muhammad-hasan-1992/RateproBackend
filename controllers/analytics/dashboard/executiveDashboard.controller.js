@@ -28,10 +28,12 @@ exports.getExecutiveDashboard = asyncHandler(async (req, res) => {
         const startDate = new Date();
         startDate.setDate(startDate.getDate() - days);
 
-        // Dashboard data calculations
-        const satisfactionData = await calculateCustomerSatisfactionIndex(tenantId, startDate);
-        const npsData = await calculateNPSScore(tenantId, startDate);
-        const responseRateData = await calculateResponseRate(tenantId, startDate);
+        // Dashboard data calculations — parallelized for performance
+        const [satisfactionData, npsData, responseRateData] = await Promise.all([
+            calculateCustomerSatisfactionIndex(tenantId, startDate),
+            calculateNPSScore(tenantId, startDate),
+            calculateResponseRate(tenantId, startDate)
+        ]);
 
         const dashboardData = {
             customerSatisfactionIndex: satisfactionData,

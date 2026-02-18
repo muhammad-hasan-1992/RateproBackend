@@ -8,18 +8,17 @@ const trendService = require("./trendService");
 
 /**
  * Calculate Customer Satisfaction Index (CSI) with breakdown by location and service
+ * Uses direct tenant filtering on SurveyResponse — no intermediate Survey.find() needed
  */
 exports.calculateCustomerSatisfactionIndex = async (tenantId, startDate) => {
     try {
-        // Get all tenant surveys
-        const surveys = await Survey.find({ tenant: tenantId }).select("_id");
-        const surveyIds = surveys.map(s => s._id);
+        const tenantOid = new mongoose.Types.ObjectId(tenantId);
 
-        // Calculate overall satisfaction for current period
+        // Calculate overall satisfaction for current period — direct tenant scoping
         const satisfactionAgg = await SurveyResponse.aggregate([
             {
                 $match: {
-                    survey: { $in: surveyIds },
+                    tenant: tenantOid,
                     createdAt: { $gte: startDate },
                     $or: [
                         { rating: { $exists: true, $ne: null } },
@@ -49,7 +48,7 @@ exports.calculateCustomerSatisfactionIndex = async (tenantId, startDate) => {
         const previousAgg = await SurveyResponse.aggregate([
             {
                 $match: {
-                    survey: { $in: surveyIds },
+                    tenant: tenantOid,
                     createdAt: { $gte: previousStart, $lt: startDate },
                     $or: [
                         { rating: { $exists: true, $ne: null } },
@@ -79,7 +78,7 @@ exports.calculateCustomerSatisfactionIndex = async (tenantId, startDate) => {
         const locationAgg = await SurveyResponse.aggregate([
             {
                 $match: {
-                    survey: { $in: surveyIds },
+                    tenant: tenantOid,
                     createdAt: { $gte: startDate },
                     "metadata.location": { $exists: true, $ne: null }
                 }
@@ -121,18 +120,17 @@ exports.calculateCustomerSatisfactionIndex = async (tenantId, startDate) => {
 
 /**
  * Calculate NPS Score from survey responses
+ * Uses direct tenant filtering — no intermediate Survey.find() needed
  */
 exports.calculateNPSScore = async (tenantId, startDate) => {
     try {
-        // Get all tenant surveys
-        const surveys = await Survey.find({ tenant: tenantId }).select("_id");
-        const surveyIds = surveys.map(s => s._id);
+        const tenantOid = new mongoose.Types.ObjectId(tenantId);
 
-        // Calculate NPS for current period
+        // Calculate NPS for current period — direct tenant scoping
         const npsResponses = await SurveyResponse.aggregate([
             {
                 $match: {
-                    survey: { $in: surveyIds },
+                    tenant: tenantOid,
                     createdAt: { $gte: startDate },
                     score: { $exists: true, $gte: 0, $lte: 10 }
                 }
@@ -177,7 +175,7 @@ exports.calculateNPSScore = async (tenantId, startDate) => {
         const previousNps = await SurveyResponse.aggregate([
             {
                 $match: {
-                    survey: { $in: surveyIds },
+                    tenant: tenantOid,
                     createdAt: { $gte: previousStart, $lt: startDate },
                     score: { $exists: true, $gte: 0, $lte: 10 }
                 }
@@ -219,7 +217,7 @@ exports.calculateNPSScore = async (tenantId, startDate) => {
 /**
  * Calculate Response Rate for surveys
  * Uses period-over-period SurveyResponse aggregation for real trend data.
- * Note: current rate is 0 because view/open tracking is not yet implemented.
+ * Note: rate is 0 because view/open tracking is not yet implemented.
  */
 exports.calculateResponseRate = async (tenantId, startDate) => {
     try {
@@ -247,9 +245,9 @@ exports.calculateResponseRate = async (tenantId, startDate) => {
             : 0;
 
         return {
-            current: 0,  // No view tracking — honest zero until implemented
+            rate: 0,  // No view tracking — honest zero until implemented
             trend,
-            total: totalSurveys,
+            surveysSent: totalSurveys,
             completed: currentResponses
         };
     } catch (error) {
@@ -257,7 +255,7 @@ exports.calculateResponseRate = async (tenantId, startDate) => {
             error,
             context: { tenantId, startDate }
         });
-        return { current: 0, trend: 0, total: 0, completed: 0 };
+        return { rate: 0, trend: 0, surveysSent: 0, completed: 0 };
     }
 };
 
@@ -375,22 +373,22 @@ exports.calculateSLAMetrics = async (tenantId, startDate) => {
 
 /**
  * Get Top Complaints categories from AI-analyzed response themes
+ * Uses direct tenant filtering — no intermediate Survey.find() needed
  */
 exports.getTopComplaints = async (tenantId, startDate) => {
     try {
-        const surveys = await Survey.find({ tenant: tenantId }).select("_id");
-        const surveyIds = surveys.map(s => s._id);
+        const tenantOid = new mongoose.Types.ObjectId(tenantId);
 
         // Get previous period for trend calculation
         const periodDays = Math.round((new Date() - startDate) / (1000 * 60 * 60 * 24));
         const previousStart = new Date(startDate);
         previousStart.setDate(previousStart.getDate() - periodDays);
 
-        // Aggregate themes from responses marked as complaints
+        // Aggregate themes from responses marked as complaints — direct tenant scoping
         const complaintThemes = await SurveyResponse.aggregate([
             {
                 $match: {
-                    survey: { $in: surveyIds },
+                    tenant: tenantOid,
                     createdAt: { $gte: startDate },
                     "analysis.classification.isComplaint": true
                 }
@@ -410,7 +408,7 @@ exports.getTopComplaints = async (tenantId, startDate) => {
         const previousComplaints = await SurveyResponse.aggregate([
             {
                 $match: {
-                    survey: { $in: surveyIds },
+                    tenant: tenantOid,
                     createdAt: { $gte: previousStart, $lt: startDate },
                     "analysis.classification.isComplaint": true
                 }
@@ -447,22 +445,22 @@ exports.getTopComplaints = async (tenantId, startDate) => {
 
 /**
  * Get Top Praises categories from AI-analyzed response themes
+ * Uses direct tenant filtering — no intermediate Survey.find() needed
  */
 exports.getTopPraises = async (tenantId, startDate) => {
     try {
-        const surveys = await Survey.find({ tenant: tenantId }).select("_id");
-        const surveyIds = surveys.map(s => s._id);
+        const tenantOid = new mongoose.Types.ObjectId(tenantId);
 
         // Get previous period for trend calculation
         const periodDays = Math.round((new Date() - startDate) / (1000 * 60 * 60 * 24));
         const previousStart = new Date(startDate);
         previousStart.setDate(previousStart.getDate() - periodDays);
 
-        // Aggregate themes from responses marked as praises
+        // Aggregate themes from responses marked as praises — direct tenant scoping
         const praiseThemes = await SurveyResponse.aggregate([
             {
                 $match: {
-                    survey: { $in: surveyIds },
+                    tenant: tenantOid,
                     createdAt: { $gte: startDate },
                     "analysis.classification.isPraise": true
                 }
@@ -482,7 +480,7 @@ exports.getTopPraises = async (tenantId, startDate) => {
         const previousPraises = await SurveyResponse.aggregate([
             {
                 $match: {
-                    survey: { $in: surveyIds },
+                    tenant: tenantOid,
                     createdAt: { $gte: previousStart, $lt: startDate },
                     "analysis.classification.isPraise": true
                 }

@@ -12,23 +12,39 @@ const {
  * @query range - Time range (7d, 30d, 90d) - default: 30d
  */
 exports.getTrendsAnalytics = asyncHandler(async (req, res) => {
+    const start = Date.now();
     try {
         const { range = '30d' } = req.query;
         const tenantId = req.tenantId;
-        const userId = req.user?._id;
+        if (!tenantId) {
+            return res.status(403).json({
+                success: false,
+                message: "Tenant context required"
+            });
+        }
 
         const days = parseInt(range.replace('d', '')) || 30;
         const startDate = new Date();
         startDate.setDate(startDate.getDate() - days);
 
-        const satisfactionTrend = await getSatisfactionTrend(tenantId, startDate, days);
-        const volumeTrend = await getVolumeTrend(tenantId, startDate, days);
+        // Parallelized trend calculations
+        const [satisfactionTrend, volumeTrend] = await Promise.all([
+            getSatisfactionTrend(tenantId, startDate, days),
+            getVolumeTrend(tenantId, startDate, days)
+        ]);
 
         const analyticsData = {
             satisfactionTrend,
             volumeTrend,
             generatedAt: new Date()
         };
+
+        const duration = Date.now() - start;
+        if (duration > 500) {
+            Logger.warn("getTrendsAnalytics", `Slow analytics endpoint: ${duration}ms`, {
+                context: { tenantId, duration, range }
+            });
+        }
 
         return res.status(200).json({
             success: true,
@@ -41,15 +57,15 @@ exports.getTrendsAnalytics = asyncHandler(async (req, res) => {
             error,
             context: {
                 tenantId: req.tenantId || req.user?.tenant,
-                userId: req.user?._id
+                userId: req.user?._id,
+                duration: Date.now() - start
             },
             req
         });
 
         return res.status(500).json({
             success: false,
-            message: "Failed to fetch trends analytics",
-            error: error.message
+            message: "Failed to fetch trends analytics"
         });
     }
 });

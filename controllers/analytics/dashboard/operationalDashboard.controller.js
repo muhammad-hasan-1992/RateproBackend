@@ -29,10 +29,13 @@ exports.getOperationalDashboard = asyncHandler(async (req, res) => {
         const startDate = new Date();
         startDate.setDate(startDate.getDate() - days);
 
-        const alerts = await calculateAlertCounts(tenantId);
-        const slaMetrics = await calculateSLAMetrics(tenantId, startDate);
-        const topComplaints = await getTopComplaints(tenantId, startDate);
-        const topPraises = await getTopPraises(tenantId, startDate);
+        // Operational data calculations — parallelized for performance
+        const [alerts, slaMetrics, topComplaints, topPraises] = await Promise.all([
+            calculateAlertCounts(tenantId),
+            calculateSLAMetrics(tenantId, startDate),
+            getTopComplaints(tenantId, startDate),
+            getTopPraises(tenantId, startDate)
+        ]);
 
         const dashboardData = {
             alerts,

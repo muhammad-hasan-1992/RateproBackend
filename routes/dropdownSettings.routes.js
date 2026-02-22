@@ -5,13 +5,12 @@
  * 
  * Access Control:
  * - Read operations (GET): All authenticated users
- * - CRUD operations (POST/PUT/DELETE): System Admin only
+ * - CRUD operations (POST/PUT/DELETE): System Admin only (via shared allowRoles middleware)
  */
 
 const express = require('express');
 const router = express.Router();
 const {
-    requireSystemAdmin,
     getDropdownTypes,
     getOptions,
     createOption,
@@ -20,6 +19,7 @@ const {
     reorderOptions
 } = require('../controllers/dropdownSettingsController');
 const { protect } = require('../middlewares/authMiddleware');
+const { allowRoles } = require('../middlewares/roleMiddleware');
 
 // All routes require authentication
 router.use(protect);
@@ -35,19 +35,19 @@ router.get('/types', getDropdownTypes);
 router.get('/:type', getOptions);
 
 // ============================================
-// CRUD OPERATIONS - System Admin only
+// CRUD OPERATIONS - System Admin only (shared middleware)
 // ============================================
 
 // Create a new option
-router.post('/', requireSystemAdmin, createOption);
+router.post('/', allowRoles('admin'), createOption);
 
 // Update an option
-router.put('/:id', requireSystemAdmin, updateOption);
+router.put('/:id', allowRoles('admin'), updateOption);
 
 // Delete an option (soft delete)
-router.delete('/:id', requireSystemAdmin, deleteOption);
+router.delete('/:id', allowRoles('admin'), deleteOption);
 
 // Reorder options within a type
-router.post('/:type/reorder', requireSystemAdmin, reorderOptions);
+router.post('/:type/reorder', allowRoles('admin'), reorderOptions);
 
 module.exports = router;

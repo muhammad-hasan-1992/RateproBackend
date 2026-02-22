@@ -55,10 +55,10 @@ router.get("/status/:status", checkSurveyActionPermission("view"), getActionsByS
 router.get("/analytics/summary", allowRoles("companyAdmin"), getActionsAnalytics);
 
 // Bulk operations
-router.put("/bulk/update", allowRoles("companyAdmin", "admin"), bulkUpdateActions);
+router.put("/bulk/update", allowRoles("companyAdmin"), bulkUpdateActions);
 
 // AI-powered action generation from feedback
-router.post("/generate/feedback", allowRoles("companyAdmin", "admin"), generateActionsFromFeedback);
+router.post("/generate/feedback", allowRoles("companyAdmin"), generateActionsFromFeedback);
 
 // ============================================================================
 // Action Plan Routes (nested under actions/:id/plan)

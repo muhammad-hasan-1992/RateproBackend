@@ -133,8 +133,14 @@ app.use('/api/admin/subscription', require('./routes/adminSubscriptionRoutes'));
 // 🔥 NEW: Dropdown settings routes (System Settings)
 app.use('/api/settings/dropdowns', require('./routes/dropdownSettings.routes'));
 
+// 🔥 NEW: Settings routes (General, Theme, Notifications)
+app.use('/api/settings', require('./routes/settingsRoutes'));
+
 // 🔥 NEW: Platform routes (System Admin only)
 app.use('/api/platform', require('./routes/platform.routes'));
+
+// 🔥 NEW: Profile update request routes (CompanyAdmin approval workflow)
+app.use('/api/profile-updates', require('./routes/profileUpdateRoutes'));
 
 cron.schedule('*/5 * * * *', () => {
   require('./controllers/surveyController').autoPublishScheduledSurveys();

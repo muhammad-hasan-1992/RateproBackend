@@ -4,6 +4,7 @@ const router = express.Router();
 const { protect } = require("../middlewares/authMiddleware");
 const { setTenantId } = require("../middlewares/tenantMiddleware");
 const { allowRoles } = require("../middlewares/roleMiddleware");
+const { enforceTenantScope } = require("../middlewares/scopeMiddleware");
 const ActionTemplate = require("../models/ActionTemplate");
 const Action = require("../models/Action");
 const { applyAssignmentRules } = require("../services/action/assignmentService");
@@ -11,6 +12,7 @@ const Logger = require("../utils/logger");
 
 router.use(protect);
 router.use(setTenantId);
+router.use(enforceTenantScope);
 
 /**
  * GET /api/actions/templates
@@ -40,7 +42,7 @@ router.get("/", async (req, res) => {
  * POST /api/actions/templates
  * Create a new action template
  */
-router.post("/", allowRoles("companyAdmin", "admin"), async (req, res) => {
+router.post("/", allowRoles("companyAdmin"), async (req, res) => {
     try {
         const { name, description, defaults, assignment, tags } = req.body;
 
@@ -74,7 +76,7 @@ router.post("/", allowRoles("companyAdmin", "admin"), async (req, res) => {
  * PUT /api/actions/templates/:id
  * Update an action template
  */
-router.put("/:id", allowRoles("companyAdmin", "admin"), async (req, res) => {
+router.put("/:id", allowRoles("companyAdmin"), async (req, res) => {
     try {
         const template = await ActionTemplate.findOneAndUpdate(
             { _id: req.params.id, tenant: req.user.tenant },
@@ -97,7 +99,7 @@ router.put("/:id", allowRoles("companyAdmin", "admin"), async (req, res) => {
  * DELETE /api/actions/templates/:id
  * Delete an action template
  */
-router.delete("/:id", allowRoles("companyAdmin", "admin"), async (req, res) => {
+router.delete("/:id", allowRoles("companyAdmin"), async (req, res) => {
     try {
         const result = await ActionTemplate.deleteOne({
             _id: req.params.id,

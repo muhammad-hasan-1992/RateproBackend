@@ -10,12 +10,13 @@ const Logger = require("../../utils/auditLog");
 
 /**
  * Create a single notification
+ * Scope is server-determined: tenantId present → "tenant", absent → "platform"
  * @param {Object} params - Notification parameters
  * @returns {Promise<Object>} Created notification
  */
 exports.createNotification = async ({
   userId,
-  tenantId,
+  tenantId = null,
   title,
   message,
   type = "info",
@@ -27,13 +28,17 @@ exports.createNotification = async ({
   source = "system",
 }) => {
   try {
+    // 🔐 Server-determined scope — never trust client input
+    const scope = tenantId ? "tenant" : "platform";
+
     console.log(`\n📬 [NotificationService] Creating notification...`);
-    console.log(`   User: ${userId}`);
+    console.log(`   User: ${userId}, Scope: ${scope}`);
     console.log(`   Title: ${title}`);
     console.log(`   Type: ${type}, Priority: ${priority}`);
 
     const notification = await Notification.create({
       user: userId,
+      scope,
       tenant: tenantId,
       title,
       message,
@@ -52,6 +57,7 @@ exports.createNotification = async ({
       context: {
         notificationId: notification._id,
         userId,
+        scope,
         tenantId,
         type,
         priority,
@@ -131,6 +137,7 @@ exports.notifyTenantAdmins = async ({
 
     const notifications = admins.map((admin) => ({
       user: admin._id,
+      scope: "tenant",
       tenant: tenantId,
       title,
       message,
@@ -158,11 +165,13 @@ exports.notifyTenantAdmins = async ({
 
 /**
  * Get notifications for a user with filters and pagination
+ * Uses defensive scope guard: role determines scope, scope + tenant filter queries
  * @param {Object} params - Query parameters
  * @returns {Promise<Object>} Paginated notifications
  */
 exports.getNotifications = async ({
   userId,
+  userRole,
   tenantId,
   status,
   type,
@@ -174,14 +183,18 @@ exports.getNotifications = async ({
   try {
     const skip = (page - 1) * limit;
 
-    // Build filter
-    const filter = {
-      user: userId,
-      tenant: tenantId,
-      deleted: false,
-    };
+    // 🔐 Defensive scope guard — role determines scope, never trust client
+    const filter = { user: userId, deleted: false };
 
-    // ✅ FIX: Handle comma-separated status values
+    if (userRole === "admin") {
+      filter.scope = "platform";
+      // No tenant filter for admin — platform notifications have no tenant
+    } else {
+      filter.scope = "tenant";
+      filter.tenant = tenantId;
+    }
+
+    // Handle comma-separated status values
     if (status) {
       const statusArray = status.split(',').map(s => s.trim()).filter(Boolean);
       if (statusArray.length === 1) {
@@ -191,7 +204,7 @@ exports.getNotifications = async ({
       }
     }
 
-    // ✅ FIX: Handle comma-separated type values
+    // Handle comma-separated type values
     if (type) {
       const typeArray = type.split(',').map(t => t.trim()).filter(Boolean);
       if (typeArray.length === 1) {
@@ -201,7 +214,7 @@ exports.getNotifications = async ({
       }
     }
 
-    // ✅ FIX: Handle comma-separated priority values
+    // Handle comma-separated priority values
     if (priority) {
       const priorityArray = priority.split(',').map(p => p.trim()).filter(Boolean);
       if (priorityArray.length === 1) {
@@ -211,6 +224,11 @@ exports.getNotifications = async ({
       }
     }
 
+    // Build scope filter for unread count (same defensive pattern)
+    const scopeFilter = userRole === "admin"
+      ? { scope: "platform" }
+      : { scope: "tenant", tenant: tenantId };
+
     const [notifications, total, unreadCount] = await Promise.all([
       Notification.find(filter)
         .sort(sort)
@@ -218,7 +236,7 @@ exports.getNotifications = async ({
         .limit(Number(limit))
         .lean(),
       Notification.countDocuments(filter),
-      Notification.getUnreadCount(userId, tenantId),
+      Notification.getUnreadCount(userId, scopeFilter),
     ]);
 
     return {
@@ -257,13 +275,17 @@ exports.getNotificationById = async (notificationId, userId) => {
 };
 
 /**
- * Get unread count for a user
+ * Get unread count for a user (scope-aware)
  * @param {string} userId - User ID
- * @param {string} tenantId - Tenant ID
- * @returns {Promise<number} Unread count
+ * @param {string} userRole - User role (determines scope)
+ * @param {string} tenantId - Tenant ID (for tenant-scoped users)
+ * @returns {Promise<number>} Unread count
  */
-exports.getUnreadCount = async (userId, tenantId) => {
-  return Notification.getUnreadCount(userId, tenantId);
+exports.getUnreadCount = async (userId, userRole, tenantId) => {
+  const scopeFilter = userRole === "admin"
+    ? { scope: "platform" }
+    : { scope: "tenant", tenant: tenantId };
+  return Notification.getUnreadCount(userId, scopeFilter);
 };
 
 // ============================================================================
@@ -296,14 +318,19 @@ exports.markAsRead = async (notificationId, userId) => {
 };
 
 /**
- * Mark all notifications as read for a user
+ * Mark all notifications as read for a user (scope-aware)
  * @param {string} userId - User ID
+ * @param {string} userRole - User role
  * @param {string} tenantId - Tenant ID
  * @returns {Promise<Object>} Update result
  */
-exports.markAllAsRead = async (userId, tenantId) => {
+exports.markAllAsRead = async (userId, userRole, tenantId) => {
   try {
-    const result = await Notification.markAllAsRead(userId, tenantId);
+    const scopeFilter = userRole === "admin"
+      ? { scope: "platform" }
+      : { scope: "tenant", tenant: tenantId };
+
+    const result = await Notification.markAllAsRead(userId, scopeFilter);
 
     console.log(`✅ [NotificationService] Marked all as read for user ${userId}: ${result.modifiedCount} updated`);
 
@@ -371,15 +398,25 @@ exports.deleteNotification = async (notificationId, userId) => {
 };
 
 /**
- * Delete all notifications for a user (soft delete)
+ * Delete all notifications for a user (soft delete, scope-aware)
  * @param {string} userId - User ID
+ * @param {string} userRole - User role
  * @param {string} tenantId - Tenant ID
  * @returns {Promise<Object>} Delete result
  */
-exports.deleteAllNotifications = async (userId, tenantId) => {
+exports.deleteAllNotifications = async (userId, userRole, tenantId) => {
   try {
+    const filter = { user: userId };
+
+    if (userRole === "admin") {
+      filter.scope = "platform";
+    } else {
+      filter.scope = "tenant";
+      filter.tenant = tenantId;
+    }
+
     const result = await Notification.updateMany(
-      { user: userId, tenant: tenantId },
+      filter,
       { $set: { deleted: true } }
     );
 
@@ -414,7 +451,7 @@ exports.notifyUrgentAction = async (action) => {
 
     // 1. Check tenant notification settings
     const tenant = await Tenant.findById(tenantId);
-    
+
     // ✅ FIX: Clearer logging - notifications are separate from action engine
     if (!tenant?.features?.notifications) {
       console.log(`   ℹ️ Notifications disabled for tenant ${tenantId}`);
@@ -423,7 +460,7 @@ exports.notifyUrgentAction = async (action) => {
 
     // 2. Determine recipients - ONLY company admins of THIS tenant
     console.log(`   🔍 Finding company admin recipients...`);
-    
+
     const recipients = [];
 
     // If action is assigned to specific user, notify them
@@ -450,7 +487,7 @@ exports.notifyUrgentAction = async (action) => {
         role: "companyAdmin",  // Only company admins, not all admin roles
         deleted: { $ne: true },
       }).select("_id");
-      
+
       recipients.push(...companyAdmins.map((a) => a._id));
       console.log(`   → Added ${companyAdmins.length} company admin(s)`);
     }
@@ -468,6 +505,7 @@ exports.notifyUrgentAction = async (action) => {
     // 3. Create in-app notifications
     const notifications = uniqueRecipients.map((userId) => ({
       user: userId,
+      scope: "tenant",
       tenant: tenantId,
       title: `🚨 ${action.title}`,
       message: action.description?.substring(0, 200) || "Urgent action requires your attention",
@@ -484,9 +522,9 @@ exports.notifyUrgentAction = async (action) => {
     }));
 
     await Notification.insertMany(notifications);
-    
+
     console.log(`   ✅ Notification sent to ${uniqueRecipients.length} user(s)`);
-    
+
     return { sent: true, recipientCount: uniqueRecipients.length };
 
   } catch (error) {

@@ -3,7 +3,7 @@ const express = require("express");
 const router = express.Router();
 const { protect } = require("../middlewares/authMiddleware");
 const { allowRoles } = require("../middlewares/roleMiddleware");
-const { tenantCheck } = require("../middlewares/tenantMiddleware");
+const { tenantCheck, setTenantId } = require("../middlewares/tenantMiddleware");
 
 // Controller
 const {
@@ -26,21 +26,8 @@ const {
 router.use(protect);
 
 // ============================================================================
-// Tenant Middleware
+// Tenant Middleware (canonical from tenantMiddleware.js)
 // ============================================================================
-const setTenantId = (req, res, next) => {
-  if (req.user.role === "admin") {
-    return next();
-  }
-  if (!req.user.tenant) {
-    return res.status(403).json({ message: "Access denied: No tenant associated with this user" });
-  }
-  req.tenantId = req.user.tenant._id
-    ? req.user.tenant._id.toString()
-    : req.user.tenant.toString();
-  next();
-};
-
 router.use(setTenantId);
 
 // ============================================================================

@@ -4,19 +4,20 @@ const router = express.Router();
 const { protect } = require("../middlewares/authMiddleware");
 const { setTenantId } = require("../middlewares/tenantMiddleware");
 const { allowRoles } = require("../middlewares/roleMiddleware");
+const { enforceTenantScope } = require("../middlewares/scopeMiddleware");
 const EscalationRule = require("../models/EscalationRule");
-const { runEscalationCheck } = require("../crons/escalation.cron");
 const Logger = require("../utils/logger");
 
-// Protect all routes
+// Protect all routes - TENANT LAYER
 router.use(protect);
 router.use(setTenantId);
+router.use(enforceTenantScope);
 
 /**
  * GET /api/escalation/rules
  * List all escalation rules for tenant
  */
-router.get("/rules", allowRoles("companyAdmin", "admin"), async (req, res) => {
+router.get("/rules", allowRoles("companyAdmin"), async (req, res) => {
     try {
         const rules = await EscalationRule.find({ tenant: req.user.tenant })
             .populate("action.escalateTo", "name email")
@@ -33,7 +34,7 @@ router.get("/rules", allowRoles("companyAdmin", "admin"), async (req, res) => {
  * POST /api/escalation/rules
  * Create a new escalation rule
  */
-router.post("/rules", allowRoles("companyAdmin", "admin"), async (req, res) => {
+router.post("/rules", allowRoles("companyAdmin"), async (req, res) => {
     try {
         const { name, description, trigger, conditions, action, priority, isActive } = req.body;
 
@@ -70,7 +71,7 @@ router.post("/rules", allowRoles("companyAdmin", "admin"), async (req, res) => {
  * PUT /api/escalation/rules/:id
  * Update an escalation rule
  */
-router.put("/rules/:id", allowRoles("companyAdmin", "admin"), async (req, res) => {
+router.put("/rules/:id", allowRoles("companyAdmin"), async (req, res) => {
     try {
         const rule = await EscalationRule.findOne({
             _id: req.params.id,
@@ -110,7 +111,7 @@ router.put("/rules/:id", allowRoles("companyAdmin", "admin"), async (req, res) =
  * DELETE /api/escalation/rules/:id
  * Delete an escalation rule
  */
-router.delete("/rules/:id", allowRoles("companyAdmin", "admin"), async (req, res) => {
+router.delete("/rules/:id", allowRoles("companyAdmin"), async (req, res) => {
     try {
         const result = await EscalationRule.deleteOne({
             _id: req.params.id,
@@ -130,20 +131,6 @@ router.delete("/rules/:id", allowRoles("companyAdmin", "admin"), async (req, res
     } catch (error) {
         Logger.error("deleteEscalationRule", "Error deleting rule", { error, req });
         res.status(500).json({ success: false, message: "Error deleting rule" });
-    }
-});
-
-/**
- * POST /api/escalation/trigger
- * Manually trigger escalation check (admin only)
- */
-router.post("/trigger", allowRoles("admin"), async (req, res) => {
-    try {
-        const result = await runEscalationCheck();
-        res.json({ success: true, ...result });
-    } catch (error) {
-        Logger.error("triggerEscalation", "Error triggering escalation", { error, req });
-        res.status(500).json({ success: false, message: "Error triggering escalation" });
     }
 });
 

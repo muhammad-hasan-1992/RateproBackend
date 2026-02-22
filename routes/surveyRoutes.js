@@ -12,7 +12,7 @@ const { upload } = require("../middlewares/multer");
 const { protect } = require("../middlewares/authMiddleware");
 const { allowRoles } = require("../middlewares/roleMiddleware");
 const { allowPermission } = require("../middlewares/permissionMiddleware");
-const { tenantCheck } = require("../middlewares/tenantMiddleware");
+const { tenantCheck, setTenantId } = require("../middlewares/tenantMiddleware");
 const { enforceTenantScope } = require("../middlewares/scopeMiddleware");
 const { surveyResponseLimiter, anonymousSurveyLimiter } = require("../middlewares/rateLimiter");
 
@@ -102,21 +102,6 @@ router.post("/responses/anonymous/:surveyId", surveyResponseLimiter, anonymousSu
 // This explicitly BLOCKS System Admin from accessing tenant survey resources
 router.use(protect);
 
-// Set tenant context for non-admin users
-const setTenantId = (req, res, next) => {
-  if (!req.user.tenant) {
-    return res.status(403).json({
-      success: false,
-      message: "Access denied: No tenant associated with this user",
-      code: "NO_TENANT_CONTEXT"
-    });
-  }
-  req.tenantId = req.user.tenant._id
-    ? req.user.tenant._id.toString()
-    : req.user.tenant.toString();
-  next();
-};
-
 router.use(setTenantId);
 router.use(enforceTenantScope);  // Blocks System Admin from tenant resources
 
@@ -129,7 +114,7 @@ router.use(enforceTenantScope);  // Blocks System Admin from tenant resources
 router.post(
   "/save-draft",
   tenantCheck,
-  allowRoles("admin", "companyAdmin"),
+  allowRoles("companyAdmin", "member"),
   allowPermission("survey:create"),
   upload.single("logo"),
   createSurveyController
@@ -138,7 +123,7 @@ router.post(
 router.post(
   "/create",
   tenantCheck,
-  allowRoles("admin", "companyAdmin"),
+  allowRoles("companyAdmin", "member"),
   allowPermission("survey:create"),
   upload.single("logo"),
   publishSurvey
@@ -147,7 +132,7 @@ router.post(
 router.post(
   "/publish",
   tenantCheck,
-  allowRoles("admin", "companyAdmin"),
+  allowRoles("companyAdmin", "member"),
   allowPermission("survey:publish"),
   publishSurvey
 );
@@ -155,7 +140,7 @@ router.post(
 router.post(
   "/:surveyId/publish",
   tenantCheck,
-  allowRoles("admin", "companyAdmin"),
+  allowRoles("companyAdmin", "member"),
   allowPermission("survey:publish"),
   publishSurvey
 );
@@ -164,7 +149,7 @@ router.post(
 router.get(
   "/",
   tenantCheck,
-  allowRoles("admin", "companyAdmin"),
+  allowRoles("companyAdmin", "member"),
   allowPermission("survey:read"),
   listSurveys
 );
@@ -172,7 +157,7 @@ router.get(
 router.get(
   "/:id",
   tenantCheck,
-  allowRoles("admin", "companyAdmin"),
+  allowRoles("companyAdmin", "member"),
   allowPermission("survey:detail:view"),
   getSurveyById
 );
@@ -181,7 +166,7 @@ router.get(
 router.put(
   "/:surveyId",
   tenantCheck,
-  allowRoles("admin", "companyAdmin"),
+  allowRoles("companyAdmin", "member"),
   allowPermission("survey:settings:update"),
   upload.single("logo"),
   updateSurvey
@@ -226,7 +211,7 @@ router.put(
 router.post(
   "/:surveyId/schedule",
   tenantCheck,
-  allowRoles("admin", "companyAdmin"),
+  allowRoles("companyAdmin", "member"),
   allowPermission("survey:settings:update"),
   scheduleSurvey
 );
@@ -235,7 +220,7 @@ router.post(
 router.post(
   "/:surveyId/audience",
   tenantCheck,
-  allowRoles("admin", "companyAdmin"),
+  allowRoles("companyAdmin", "member"),
   allowPermission("survey:settings:update"),
   setAudience
 );
@@ -248,7 +233,7 @@ router.post(
 router.get(
   "/:surveyId/responses",
   tenantCheck,
-  allowRoles("admin", "companyAdmin"),
+  allowRoles("companyAdmin", "member"),
   allowPermission("survey:responses:view"),
   getSurveyResponses  // TODO: Migrate to modular controller
 );
@@ -256,7 +241,7 @@ router.get(
 router.get(
   "/:surveyId/analytics",
   tenantCheck,
-  allowRoles("admin", "companyAdmin"),
+  allowRoles("companyAdmin", "member"),
   allowPermission("survey:analytics:view"),
   getAnalytics
 );
@@ -269,7 +254,7 @@ router.get(
 router.get(
   "/:surveyId/qr",
   tenantCheck,
-  allowRoles("admin", "companyAdmin"),
+  allowRoles("companyAdmin", "member"),
   allowPermission("survey:share"),
   getAnonymousSurveyQRCode
 );
@@ -277,7 +262,7 @@ router.get(
 router.get(
   "/:surveyId/invite-qr/:inviteId",
   tenantCheck,
-  allowRoles("admin", "companyAdmin"),
+  allowRoles("companyAdmin", "member"),
   allowPermission("survey:share"),
   getInviteQRCode
 );
@@ -286,7 +271,7 @@ router.get(
 router.get(
   "/qr/:id",
   tenantCheck,
-  allowRoles("admin", "companyAdmin"),
+  allowRoles("companyAdmin", "member"),
   allowPermission("survey:share"),
   getSurveyQRCode
 );
@@ -299,7 +284,7 @@ router.get(
 router.get(
   "/report/:id",
   tenantCheck,
-  allowRoles("admin", "companyAdmin"),
+  allowRoles("companyAdmin", "member"),
   allowPermission("survey:report:view"),
   exportSurveyReport
 );
@@ -312,7 +297,7 @@ router.get(
 router.post(
   "/feedback/analyze",
   tenantCheck,
-  allowRoles("admin", "companyAdmin"),
+  allowRoles("companyAdmin", "member"),
   allowPermission("feedback:analyze"),
   analyzeFeedback
 );
@@ -320,7 +305,7 @@ router.post(
 router.post(
   "/actions/generate",
   tenantCheck,
-  allowRoles("admin", "companyAdmin"),
+  allowRoles("companyAdmin", "member"),
   allowPermission("action:generate"),
   generateActions
 );
@@ -328,7 +313,7 @@ router.post(
 router.post(
   "/feedback/follow-up",
   tenantCheck,
-  allowRoles("admin", "companyAdmin"),
+  allowRoles("companyAdmin", "member"),
   allowPermission("feedback:follow-up"),
   followUp
 );
@@ -341,7 +326,7 @@ router.post(
 router.get(
   "/dashboards/executive",
   tenantCheck,
-  allowRoles("admin", "companyAdmin"),
+  allowRoles("companyAdmin", "member"),
   allowPermission("dashboard:view"),
   (req, res) => {
     res.redirect(307, `/api/analytics/executive?${new URLSearchParams(req.query)}`);
@@ -351,7 +336,7 @@ router.get(
 router.get(
   "/dashboards/operational",
   tenantCheck,
-  allowRoles("admin", "companyAdmin"),
+  allowRoles("companyAdmin", "member"),
   allowPermission("dashboard:view"),
   (req, res) => {
     res.redirect(307, `/api/analytics/operational?${new URLSearchParams(req.query)}`);

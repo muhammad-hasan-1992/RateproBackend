@@ -15,9 +15,10 @@ const { protect } = require("../middlewares/authMiddleware");
 const { allowRoles } = require("../middlewares/roleMiddleware");
 const { allowPermission } = require("../middlewares/permissionMiddleware");
 const { setTenantId } = require("../middlewares/tenantMiddleware");
+const { enforceTenantScope } = require("../middlewares/scopeMiddleware");
 
-// 🔹 Base: all routes protected + tenant context applied
-router.use(protect, setTenantId);
+// 🔹 Base: all routes protected + tenant context + tenant scope enforced
+router.use(protect, setTenantId, enforceTenantScope);
 
 /**
  * @route   POST /api/contact-categories
@@ -26,7 +27,7 @@ router.use(protect, setTenantId);
  */
 router.post(
   "/",
-  allowRoles("admin", "companyAdmin"),
+  allowRoles("companyAdmin"),
   allowPermission("category:create"),
   createCategory
 );
@@ -38,7 +39,7 @@ router.post(
  */
 router.get(
   "/",
-  allowRoles("admin", "companyAdmin", "member"),
+  allowRoles("companyAdmin", "member"),
   allowPermission("category:read"),
   getCategories
 );
@@ -50,7 +51,7 @@ router.get(
  */
 router.get(
   "/:id",
-  allowRoles("admin", "companyAdmin", "member"),
+  allowRoles("companyAdmin", "member"),
   allowPermission("category:read"),
   getCategoryById
 );
@@ -62,7 +63,7 @@ router.get(
  */
 router.get(
   "/:id/contacts",
-  allowRoles("admin", "companyAdmin"),
+  allowRoles("companyAdmin"),
   allowPermission("category:read"),
   getContactsByCategory
 );
@@ -74,7 +75,7 @@ router.get(
  */
 router.patch(
   "/:id",
-  allowRoles("admin", "companyAdmin"),
+  allowRoles("companyAdmin"),
   allowPermission("category:update"),
   updateCategory
 );
@@ -86,7 +87,7 @@ router.patch(
  */
 router.delete(
   "/:id",
-  allowRoles("admin", "companyAdmin"),
+  allowRoles("companyAdmin"),
   allowPermission("category:delete"),
   deleteCategory
 );

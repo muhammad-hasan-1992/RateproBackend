@@ -1,26 +1,41 @@
 // utils/aiClient.js
-const { GoogleGenerativeAI } = require("@google/generative-ai");
+//
+// Gemini AI client.
+// Reads GEMINI_API_KEY via configService (DB → ENV → throw).
+// Uses lazy async initialization — API key is NOT read at module load.
 
-// Initialize Gemini AI
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+const { GoogleGenerativeAI } = require("@google/generative-ai");
+const configService = require("../services/configService");
+
+let _genAI = null;
+
+/**
+ * Lazily initialize the Gemini AI client.
+ * Reads API key from configService on first call.
+ */
+const getGenAI = async () => {
+  if (_genAI) return _genAI;
+
+  const apiKey = await configService.getConfig("GEMINI_API_KEY", {
+    sensitive: true, // DB → ENV → THROW
+  });
+
+  _genAI = new GoogleGenerativeAI(apiKey);
+  return _genAI;
+};
 
 const aiClient = {
   /**
    * Complete a prompt using Gemini (Google AI).
-   * @param {Object} options
-   * @param {string} options.prompt - Prompt text for the model
-   * @param {number} [options.maxTokens=500] - Max tokens in completion
-   * @returns {Promise<{ text: string }>}
+   * @param {Object|string} input - Prompt text or object with .prompt/.text
+   * @returns {Promise<{ text: string, usage: Object }>}
    */
   async complete(input) {
     try {
       console.log("🔍 aiClient.complete called with input type:", typeof input);
-      console.log("🔍 Input value preview:", String(input).substring(0, 100));
 
-      // ✅ SIMPLIFIED: Direct string handling
+      // Handle string or object input
       let prompt = input;
-
-      // Handle object input (if any)
       if (typeof input === "object" && input !== null) {
         if (input.prompt) {
           prompt = input.prompt;
@@ -31,32 +46,16 @@ const aiClient = {
         }
       }
 
-      // Convert to string if not already
       prompt = String(prompt || "").trim();
 
-      console.log("🔍 Final prompt type:", typeof prompt);
-      console.log("🔍 Final prompt length:", prompt.length);
-      console.log("🔍 Final prompt empty check:", prompt.length === 0);
-
-      // ✅ FIXED: Better validation
       if (!prompt || prompt.length === 0) {
-        console.error("❌ Prompt validation failed:", {
-          originalInput: typeof input,
-          processedPrompt: prompt,
-          promptLength: prompt ? prompt.length : "undefined",
-        });
         throw new Error("Prompt must be a non-empty string");
       }
 
-      console.log("✅ Prompt validation passed, sending to Gemini...");
       console.log("🤖 Prompt length:", prompt.length);
-      console.log("🤖 Prompt preview:", prompt.substring(0, 200) + "...");
 
-      // Check if API key is configured
-      if (!process.env.GEMINI_API_KEY) {
-        throw new Error("GEMINI_API_KEY is not configured in environment variables");
-      }
-
+      // Lazy init — reads key from configService
+      const genAI = await getGenAI();
       const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
       const result = await model.generateContent(prompt);
@@ -64,7 +63,6 @@ const aiClient = {
       const text = response.text();
 
       console.log("✅ Gemini response received, length:", text.length);
-      console.log("✅ Gemini response preview:", text.substring(0, 300) + "...");
 
       return {
         text: text,
@@ -74,16 +72,13 @@ const aiClient = {
         },
       };
     } catch (error) {
-      console.error("❌ Gemini Client Error Details:", {
+      console.error("❌ Gemini Client Error:", {
         message: error.message,
-        stack: error.stack,
         inputType: typeof input,
-        inputLength: input ? String(input).length : "undefined",
       });
 
-      // Check specific error types
-      if (error.message.includes("API key") || error.message.includes("GEMINI_API_KEY")) {
-        throw new Error("Gemini API key is invalid or missing. Please check your environment variables.");
+      if (error.message.includes("API key") || error.message.includes("GEMINI_API_KEY") || error.message.includes("Required sensitive config")) {
+        throw new Error("Gemini API key is invalid or missing. Configure it via admin panel or .env");
       }
 
       if (error.message.includes("rate limit") || error.message.includes("quota")) {
@@ -94,41 +89,9 @@ const aiClient = {
         throw new Error("Invalid prompt format provided to Gemini API.");
       }
 
-      // Generic error
       throw new Error("Gemini AI service failed. Please try again later.");
     }
   },
 };
 
 module.exports = aiClient;
-
-// // utils/aiClient.js
-// const OpenAI = require("openai");
-
-// const openai = new OpenAI({
-//   apiKey: process.env.OPENAI_API_KEY,
-// });
-
-// /**
-//  * Complete a prompt using OpenAI (or other LLM provider).
-//  * @param {Object} options
-//  * @param {string} options.prompt - Prompt text for the model
-//  * @param {number} [options.maxTokens=500] - Max tokens in completion
-//  * @returns {Promise<{ text: string }>}
-//  */
-// exports.complete = async ({ prompt, maxTokens = 500 }) => {
-//   try {
-//     const response = await openai.completions.create({
-//       model: "text-davinci-003", // Or gpt-4 if upgraded
-//       prompt,
-//       max_tokens: maxTokens,
-//       temperature: 0.7,
-//     });
-
-//     const text = response.choices?.[0]?.text?.trim() || "";
-//     return { text };
-//   } catch (err) {
-//     console.error("AI Client Error:", err);
-//     throw new Error("AI service failed. Please try again later.");
-//   }
-// };

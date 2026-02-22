@@ -38,9 +38,12 @@ exports.createNotification = async (req, res, next) => {
       });
     }
 
+    // 🔐 tenantId is server-determined for scope — admin = null (platform), others = tenant
+    const tenantId = req.user.role === "admin" ? null : (req.tenantId || req.user.tenant);
+
     const notification = await notificationService.createNotification({
       userId,
-      tenantId: req.tenantId || req.user.tenant,
+      tenantId,
       title,
       message,
       type,
@@ -81,10 +84,11 @@ exports.createBatchNotifications = async (req, res, next) => {
       });
     }
 
-    // Add tenant to each notification
+    // Add tenant and scope to each notification
     const tenantId = req.tenantId || req.user.tenant;
     const enrichedNotifications = notifications.map((n) => ({
       ...n,
+      scope: "tenant",
       tenant: tenantId,
       source: "api",
     }));
@@ -119,6 +123,7 @@ exports.getMyNotifications = async (req, res, next) => {
 
     const result = await notificationService.getNotifications({
       userId: req.user._id,
+      userRole: req.user.role,
       tenantId: req.tenantId || req.user.tenant,
       status,
       type,
@@ -160,6 +165,7 @@ exports.getNotificationsByUserId = async (req, res, next) => {
 
     const result = await notificationService.getNotifications({
       userId,
+      userRole: req.user.role,
       tenantId: req.tenantId || req.user.tenant,
       status,
       type,
@@ -227,6 +233,7 @@ exports.getUnreadCount = async (req, res, next) => {
   try {
     const count = await notificationService.getUnreadCount(
       req.user._id,
+      req.user.role,
       req.tenantId || req.user.tenant
     );
 
@@ -293,6 +300,7 @@ exports.markAllAsRead = async (req, res, next) => {
   try {
     const result = await notificationService.markAllAsRead(
       req.user._id,
+      req.user.role,
       req.tenantId || req.user.tenant
     );
 
@@ -398,6 +406,7 @@ exports.deleteAllNotifications = async (req, res, next) => {
   try {
     const result = await notificationService.deleteAllNotifications(
       req.user._id,
+      req.user.role,
       req.tenantId || req.user.tenant
     );
 

@@ -1,20 +1,24 @@
 // utils/sendWhatsApp.js
+//
+// WhatsApp messaging via Twilio or Meta.
+// Reads credentials via configService (DB → ENV → throw) when no
+// tenant-level config is passed in the `config` parameter.
+
 const axios = require('axios');
 const Twilio = require('twilio');
+const configService = require('../services/configService');
 
-async function sendViaTwilio({ to, body, mediaUrls = [] , twilioConfig}) {
-  // to: phone like +923001234567
-  // twilioConfig: { accountSid, authToken, fromNumber }
+async function sendViaTwilio({ to, body, mediaUrls = [], twilioConfig }) {
   if (!twilioConfig || !twilioConfig.accountSid) throw new Error('Twilio not configured');
   const client = Twilio(twilioConfig.accountSid, twilioConfig.authToken);
 
   const messages = [];
-  // Twilio WhatsApp send: from: 'whatsapp:+123..', to: 'whatsapp:+92...'
   const toFmt = `whatsapp:${to}`;
-  const fromFmt = twilioConfig.fromNumber.startsWith('whatsapp:') ? twilioConfig.fromNumber : `whatsapp:${twilioConfig.fromNumber}`;
+  const fromFmt = twilioConfig.fromNumber.startsWith('whatsapp:')
+    ? twilioConfig.fromNumber
+    : `whatsapp:${twilioConfig.fromNumber}`;
 
   if (mediaUrls && mediaUrls.length) {
-    // Send single message with media + caption
     messages.push(await client.messages.create({
       from: fromFmt,
       to: toFmt,
@@ -32,22 +36,21 @@ async function sendViaTwilio({ to, body, mediaUrls = [] , twilioConfig}) {
 }
 
 async function sendViaMeta({ to, body, mediaUrls = [], metaConfig }) {
-  // metaConfig: { phoneNumberId, accessToken }
-  if (!metaConfig || !metaConfig.accessToken || !metaConfig.phoneNumberId) throw new Error('Meta WhatsApp not configured');
+  if (!metaConfig || !metaConfig.accessToken || !metaConfig.phoneNumberId)
+    throw new Error('Meta WhatsApp not configured');
+
   const url = `https://graph.facebook.com/v16.0/${metaConfig.phoneNumberId}/messages`;
   const headers = { Authorization: `Bearer ${metaConfig.accessToken}` };
 
-  // For text-only:
   const payload = {
     messaging_product: 'whatsapp',
-    to: to.replace(/^\+/, ''), // meta expects number without +
+    to: to.replace(/^\+/, ''),
     type: mediaUrls && mediaUrls.length ? 'image' : 'text',
   };
 
   if (mediaUrls && mediaUrls.length) {
-    // send media (first media as image) + caption as body
     payload.image = { link: mediaUrls[0] };
-    payload.text = { body }; // meta allows caption via text? safer to include caption in 'image' object as 'caption' for some APIs; but using text fallback
+    payload.text = { body };
   } else {
     payload.text = { body };
     payload.type = 'text';
@@ -59,26 +62,37 @@ async function sendViaMeta({ to, body, mediaUrls = [], metaConfig }) {
 
 /**
  * Main exported function:
- * config: provider-specific config or null (if you want to use tenant settings inside)
- * options: { to, body, mediaUrls }
+ * @param {Object} options
+ * @param {string} options.to - Recipient phone (E.164)
+ * @param {string} options.body - Message body
+ * @param {string[]} [options.mediaUrls] - Optional media URLs
+ * @param {Object} [options.config] - Tenant-level config override (from WhatsAppSetting model)
  */
 module.exports = async function sendWhatsApp({ to, body, mediaUrls = [], config = null }) {
-  // ENV-level provider override (optional)
   const provider = (config && config.provider) || process.env.WHATSAPP_PROVIDER || 'twilio';
 
   if (provider === 'twilio') {
+    // Use passed config first, then fall back to configService (DB → ENV → throw)
     const twilioCfg = (config && config.twilio) || {
-      accountSid: process.env.TWILIO_ACCOUNT_SID,
-      authToken: process.env.TWILIO_AUTH_TOKEN,
-      fromNumber: process.env.TWILIO_WHATSAPP_FROM, // should be whatsapp:+123...
+      accountSid: await configService.getConfig('TWILIO_ACCOUNT_SID', { sensitive: true }),
+      authToken: await configService.getConfig('TWILIO_AUTH_TOKEN', { sensitive: true }),
+      fromNumber: await configService.getConfig('TWILIO_WHATSAPP_FROM', {
+        sensitive: false,
+        defaultValue: undefined,
+      }),
     };
     return await sendViaTwilio({ to, body, mediaUrls, twilioConfig: twilioCfg });
+
   } else if (provider === 'meta') {
     const metaCfg = (config && config.meta) || {
-      phoneNumberId: process.env.META_WHATSAPP_PHONE_NUMBER_ID,
-      accessToken: process.env.META_WHATSAPP_TOKEN,
+      phoneNumberId: await configService.getConfig('META_WHATSAPP_PHONE_NUMBER_ID', {
+        sensitive: false,
+        defaultValue: undefined,
+      }),
+      accessToken: await configService.getConfig('META_WHATSAPP_TOKEN', { sensitive: true }),
     };
     return await sendViaMeta({ to, body, mediaUrls, metaConfig: metaCfg });
+
   } else {
     throw new Error('Unsupported WhatsApp provider');
   }

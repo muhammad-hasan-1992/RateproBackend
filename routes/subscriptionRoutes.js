@@ -5,6 +5,7 @@ const express = require('express');
 const router = express.Router();
 const { protect } = require('../middlewares/authMiddleware');
 const { allowRoles } = require('../middlewares/roleMiddleware');
+const { setTenantId } = require('../middlewares/tenantMiddleware');
 
 // Controllers
 const {
@@ -41,7 +42,7 @@ router.post('/webhooks/tap', express.raw({ type: 'application/json' }), handleTa
 
 // ============ PROTECTED ROUTES ============
 
-router.use(protect);
+router.use(protect, setTenantId);
 
 // Get current subscription
 router.get('/current', getCurrentSubscription);

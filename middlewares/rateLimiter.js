@@ -12,7 +12,7 @@ exports.globalLimiter = rateLimit({
 });
 
 exports.authLimiter = rateLimit({
-  windowMs: 10 * 60 * 1000, 
+  windowMs: 10 * 60 * 1000,
   max: 10,
   message: {
     status: 429,
@@ -41,3 +41,16 @@ exports.anonymousSurveyLimiter = rateLimit({
     message: "Daily submission limit reached. Please try again tomorrow.",
   },
 });
+
+// ⬅️ ADD: Config email test limiter (prevent SendGrid credit burn / spam)
+exports.configEmailTestLimiter = rateLimit({
+  windowMs: 5 * 60 * 1000, // 5 minutes
+  max: 3, // 3 test emails per 5 minutes per admin
+  message: {
+    status: 429,
+    message: "Too many test emails. Please wait 5 minutes before trying again.",
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+

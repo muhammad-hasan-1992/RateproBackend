@@ -1475,37 +1475,77 @@ exports.updateMe = async (req, res, next) => {
     });
 
     // ----------------- TENANT/COMPANY UPDATE -----------------
+    // Company profile changes go through approval pipeline (not directly saved)
+    let profileUpdatePending = false;
     if (req.body.tenant && user.role === "companyAdmin") {
+      const ProfileUpdateRequest = require("../models/ProfileUpdateRequest");
+
       let tenant = await Tenant.findById(user.tenant?._id);
       if (!tenant) {
         Logger.warn("updateMe", "Tenant not found in updateMe", {
-          context: {
-            userId,
-            tenantId: user.tenant?._id
-          },
-          req
+          context: { userId, tenantId: user.tenant?._id },
+          req,
         });
         return res.status(404).json({ message: "Tenant not found" });
       }
 
-      Object.assign(tenant, {
-        name: req.body.tenant.name ?? tenant.name,
-        address: req.body.tenant.address ?? tenant.address,
-        contactEmail: req.body.tenant.contactEmail ?? tenant.contactEmail,
-        contactPhone: req.body.tenant.contactPhone ?? tenant.contactPhone,
-        website: req.body.tenant.website ?? tenant.website,
-        totalEmployees: req.body.tenant.totalEmployees ?? tenant.totalEmployees,
-        departments: req.body.tenant.departments ?? tenant.departments,
-      });
+      // Filter to only allowed fields from the submission
+      const allowedFields = ProfileUpdateRequest.ALLOWED_FIELDS;
+      const proposedChanges = {};
+      const currentValues = {};
 
-      await tenant.save();
-      Logger.info("updateMe", "Tenant updated via updateMe", {
-        context: {
-          tenantId: tenant._id,
-          updatedBy: userId
-        },
-        req
-      });
+      for (const [field, value] of Object.entries(req.body.tenant)) {
+        if (allowedFields.includes(field) && value !== undefined) {
+          proposedChanges[field] = value;
+          currentValues[field] = tenant[field] ?? null;
+        }
+      }
+
+      if (Object.keys(proposedChanges).length > 0) {
+        // Check for existing pending request
+        const existingPending = await ProfileUpdateRequest.findOne({
+          tenant: user.tenant._id,
+          status: "pending",
+        });
+
+        if (existingPending) {
+          return res.status(409).json({
+            success: false,
+            message: "A pending company profile update request already exists. Please wait for review.",
+          });
+        }
+
+        await ProfileUpdateRequest.create({
+          requestedBy: userId,
+          tenant: user.tenant._id,
+          proposedChanges,
+          currentValues,
+        });
+
+        profileUpdatePending = true;
+
+        // Notify system admins
+        const notificationService = require("../services/notifications/notificationService");
+        const adminUsers = await User.find({ role: "admin", deleted: { $ne: true } }).select("_id");
+        for (const admin of adminUsers) {
+          await notificationService.createNotification({
+            userId: admin._id,
+            tenantId: null,
+            title: "Company Profile Update Request",
+            message: `${user.name} from "${tenant.name}" requested company profile changes.`,
+            type: "alert",
+            priority: "medium",
+            reference: { type: "Tenant", id: tenant._id },
+            actionUrl: "/platform/profile-updates",
+            source: "system",
+          });
+        }
+
+        Logger.info("updateMe", "Company profile update submitted for approval", {
+          context: { userId, tenantId: tenant._id, fields: Object.keys(proposedChanges) },
+          req,
+        });
+      }
     }
 
     // ----------------- AVATAR UPLOAD -----------------
@@ -1562,7 +1602,11 @@ exports.updateMe = async (req, res, next) => {
       req
     });
 
-    res.status(200).json({ message: "Profile updated successfully", user: safeUser });
+    const responseMessage = profileUpdatePending
+      ? "Personal profile updated. Company profile changes submitted for admin approval."
+      : "Profile updated successfully";
+
+    res.status(200).json({ message: responseMessage, user: safeUser, profileUpdatePending });
   } catch (err) {
     Logger.error("updateMe", "UpdateMe failed", {
       error: err,

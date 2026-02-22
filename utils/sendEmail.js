@@ -1,83 +1,12 @@
-// // utils/sendEmail.js
-// const nodemailer = require("nodemailer");
-// const EmailTemplate = require("../models/EmailTemplate");
+// utils/sendEmail.js
+//
+// Sends emails using the SendGrid transporter.
+// Reads FROM_NAME and FROM_EMAIL via configService (DB → ENV → default).
 
-// const sendEmail = async ({ to, subject, html, text, templateType, templateData }) => {
-
-//   try {
-//     // -------------------- 1. TRANSPORTER INIT --------------------
-//     const transporter = nodemailer.createTransport({
-//       host: process.env.SMTP_HOST,
-//       port: process.env.SMTP_PORT,
-//       secure: false,
-//       auth: {
-//         user: process.env.SMTP_USER,
-//         pass: process.env.SMTP_PASS,
-//       },
-//     });
-
-//     let finalHTML = html;
-
-//     // -------------------- 2. TEMPLATE HANDLING --------------------
-//     if (templateType && templateData) {
-//       const templateDoc = await EmailTemplate.findOne({ type: templateType, isActive: true });
-
-//       if (!templateDoc) {
-//         console.error("❌ Template not found in database:", templateType);
-//         throw new Error("Email template not found");
-//       }
-//       finalHTML = templateDoc.body;
-
-//       finalHTML = finalHTML.replace(
-//         /\$\{\s*if\s+([\w]+)\s*===\s*"(\w+)"\s*\?\s*`([\s\S]*?)`\s*:\s*`([\s\S]*?)`\s*\}/g,
-//         (match, variable, expected, trueBlock, falseBlock) => {
-//           return templateData[variable] === expected ? trueBlock : falseBlock;
-//         }
-//       );
-
-//       // console.log("🔍 Starting replacements...");
-//       Object.keys(templateData).forEach((key) => {
-//         const regex = new RegExp(`\\$\\{\\s*${key}\\s*\\}`, "g");
-
-//         // console.log(`→ Checking key: ${key}`);
-//         if (!finalHTML.match(regex)) {
-//           console.warn(`⚠️ Placeholder not found in template: \${${key}}`);
-//         }
-
-//         finalHTML = finalHTML.replace(regex, templateData[key]);
-//       });
-//     }
-
-//     // -------------------- 3. FALLBACK --------------------
-//     if (!finalHTML) {
-//       console.warn("⚠️ No HTML provided — using fallback");
-//       finalHTML = "<p>No content provided.</p>";
-//     }
-
-//     // -------------------- 4. BUILD MAIL OPTIONS --------------------
-//     const mailOptions = {
-//       from: `${process.env.FROM_NAME} <${process.env.FROM_EMAIL}>`,
-//       to,
-//       subject: subject || "Notification",
-//       html: finalHTML,
-//       text,
-//     };
-//     // -------------------- 5. SEND EMAIL --------------------
-//     const info = await transporter.sendMail(mailOptions);
-
-//     return info;
-
-//   } catch (error) {
-//     console.error("🔥 [FATAL ERROR in sendEmail]:", error.message);
-//     console.error("🔍 STACK:", error.stack);
-//     throw error;
-//   }
-// };
-
-// module.exports = sendEmail;
 const getTransporter = require('./emailTransporter');
 const renderTemplate = require('./renderEmailTemplate');
 const Logger = require('./logger');
+const configService = require('../services/configService');
 
 const sendEmail = async ({
   to,
@@ -92,21 +21,33 @@ const sendEmail = async ({
     let finalSubject = subject;
 
     if (templateType) {
-      const rendered = await renderTemplate({
-        templateType,
-        templateData,
-      });
-      finalHTML = rendered.html;
-      finalSubject = rendered.subject;
+      try {
+        const templateResult = renderTemplate(templateType, templateData);
+        if (templateResult) {
+          finalHTML = templateResult.html || finalHTML;
+          finalSubject = templateResult.subject || finalSubject;
+        }
+      } catch (templateError) {
+        Logger.warn('sendEmail', `Template render failed for type: ${templateType}`, { error: templateError });
+      }
     }
 
     if (!finalHTML) {
       finalHTML = '<p>No content provided.</p>';
     }
 
+    // Read sender details via configService (DB → ENV → hardcoded default)
+    const fromName = await configService.getConfig('FROM_NAME', {
+      sensitive: false,
+      defaultValue: 'RatePro',
+    });
+    const fromEmail = await configService.getConfig('FROM_EMAIL', {
+      sensitive: false,
+      defaultValue: 'noreply@ratepro.com',
+    });
+
     const mailOptions = {
-      from: `${process.env.FROM_NAME} <${process.env.FROM_EMAIL}>`,
-      // from: 'shoukat.hasan@gmail.com',
+      from: `${fromName} <${fromEmail}>`,
       to,
       subject: finalSubject || 'Notification',
       html: finalHTML,
@@ -117,27 +58,18 @@ const sendEmail = async ({
     getTransporter()
       .sendMail(mailOptions)
       .catch(err => {
-        // 🚨 Log the actual error for debugging
-        console.error('❌ [sendEmail] SMTP Error:', err.message);
-        console.error('❌ [sendEmail] Full error:', err);
-        
-        Logger.error('sendEmail', 'Email send failed', {
-          error: err,
-          context: {
-            to,
-            subject: finalSubject,
-            templateType,
-          },
+        Logger.error('sendEmail', 'Email delivery failed', {
+          to,
+          subject: finalSubject,
+          error: err.message,
         });
-
-        // 🚫 DO NOT rethrow
       });
 
   } catch (error) {
-    // Template or render error (still non-blocking)
-    Logger.error('sendEmail', 'Email preparation failed', {
-      error,
-      context: { to, templateType },
+    Logger.error('sendEmail', 'Failed to prepare email', {
+      to,
+      subject,
+      error: error.message,
     });
   }
 };

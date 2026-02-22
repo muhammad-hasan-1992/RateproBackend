@@ -24,12 +24,22 @@ const notificationSchema = new mongoose.Schema(
       index: true,
     },
 
-    // Tenant isolation
+    // Notification scope — server-determined, never client-controlled
+    scope: {
+      type: String,
+      enum: ["platform", "tenant"],
+      required: true,
+      default: "tenant",
+      index: true,
+    },
+
+    // Tenant isolation — required only for tenant-scoped notifications
     tenant: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Tenant",
-      required: true,
+      required: function () { return this.scope === "tenant"; },
       index: true,
+      default: null,
     },
 
     // Notification content
@@ -72,7 +82,7 @@ const notificationSchema = new mongoose.Schema(
     reference: {
       type: {
         type: String,
-        enum: ["Action", "Survey", "SurveyResponse", "User", "Ticket", null],
+        enum: ["Action", "Survey", "SurveyResponse", "User", "Ticket", "Tenant", "ProfileUpdateRequest", null],
         default: null,
       },
       id: {
@@ -129,11 +139,11 @@ const notificationSchema = new mongoose.Schema(
 // INDEXES
 // ============================================================================
 
-// Primary query: user's notifications by status (unread first)
-notificationSchema.index({ user: 1, status: 1, createdAt: -1 });
+// Primary query: user's notifications by scope + status (unread first)
+notificationSchema.index({ user: 1, scope: 1, tenant: 1, status: 1, createdAt: -1 });
 
 // Tenant-wide notifications query
-notificationSchema.index({ tenant: 1, createdAt: -1 });
+notificationSchema.index({ tenant: 1, scope: 1, createdAt: -1 });
 
 // Filter by type
 notificationSchema.index({ user: 1, type: 1, createdAt: -1 });
@@ -176,23 +186,34 @@ notificationSchema.pre("save", function (next) {
 // ============================================================================
 
 /**
- * Get unread count for a user
+ * Get unread count for a user (scope-aware)
+ * @param {string} userId
+ * @param {Object} scopeFilter - { scope, tenant? }
  */
-notificationSchema.statics.getUnreadCount = async function (userId, tenantId) {
-  return this.countDocuments({
+notificationSchema.statics.getUnreadCount = async function (userId, scopeFilter = {}) {
+  const filter = {
     user: userId,
-    tenant: tenantId,
     status: "unread",
     deleted: false,
-  });
+    ...scopeFilter,
+  };
+  return this.countDocuments(filter);
 };
 
 /**
- * Mark all as read for a user
+ * Mark all as read for a user (scope-aware)
+ * @param {string} userId
+ * @param {Object} scopeFilter - { scope, tenant? }
  */
-notificationSchema.statics.markAllAsRead = async function (userId, tenantId) {
+notificationSchema.statics.markAllAsRead = async function (userId, scopeFilter = {}) {
+  const filter = {
+    user: userId,
+    status: "unread",
+    deleted: false,
+    ...scopeFilter,
+  };
   return this.updateMany(
-    { user: userId, tenant: tenantId, status: "unread", deleted: false },
+    filter,
     { $set: { status: "read", readAt: new Date() } }
   );
 };

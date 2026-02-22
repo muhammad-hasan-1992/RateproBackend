@@ -5,11 +5,12 @@ const router = express.Router();
 const { protect } = require("../middlewares/authMiddleware");
 const { setTenantId } = require("../middlewares/tenantMiddleware");
 const { allowRoles } = require("../middlewares/roleMiddleware");
+const { enforceTenantScope } = require("../middlewares/scopeMiddleware");
 
 const segmentationController = require("../controllers/audience/segmentation.controller");
 
-// 🔹 All routes require authentication and tenant context
-router.use(protect, setTenantId);
+// 🔹 All routes require authentication, tenant context, and tenant scope
+router.use(protect, setTenantId, enforceTenantScope);
 
 // ─────────────────────────────────────────────────────────────
 // SEGMENT CRUD
@@ -22,7 +23,7 @@ router.use(protect, setTenantId);
  */
 router.post(
   "/",
-  allowRoles("companyAdmin", "admin"),
+  allowRoles("companyAdmin"),
   segmentationController.createSegment
 );
 
@@ -33,7 +34,7 @@ router.post(
  */
 router.get(
   "/",
-  allowRoles("companyAdmin", "admin", "member"),
+  allowRoles("companyAdmin", "member"),
   segmentationController.listSegments
 );
 
@@ -44,7 +45,7 @@ router.get(
  */
 router.get(
   "/filters/options",
-  allowRoles("companyAdmin", "admin"),
+  allowRoles("companyAdmin"),
   segmentationController.getFilterOptions
 );
 
@@ -55,7 +56,7 @@ router.get(
  */
 router.post(
   "/preview",
-  allowRoles("companyAdmin", "admin"),
+  allowRoles("companyAdmin"),
   segmentationController.previewFilters
 );
 
@@ -66,7 +67,7 @@ router.post(
  */
 router.get(
   "/:id",
-  allowRoles("companyAdmin", "admin", "member"),
+  allowRoles("companyAdmin", "member"),
   segmentationController.getSegment
 );
 
@@ -77,7 +78,7 @@ router.get(
  */
 router.put(
   "/:id",
-  allowRoles("companyAdmin", "admin"),
+  allowRoles("companyAdmin"),
   segmentationController.updateSegment
 );
 
@@ -88,7 +89,7 @@ router.put(
  */
 router.delete(
   "/:id",
-  allowRoles("companyAdmin", "admin"),
+  allowRoles("companyAdmin"),
   segmentationController.deleteSegment
 );
 
@@ -103,7 +104,7 @@ router.delete(
  */
 router.get(
   "/:id/preview",
-  allowRoles("companyAdmin", "admin"),
+  allowRoles("companyAdmin"),
   segmentationController.previewSegment
 );
 
@@ -114,7 +115,7 @@ router.get(
  */
 router.get(
   "/:id/count",
-  allowRoles("companyAdmin", "admin", "member"),
+  allowRoles("companyAdmin", "member"),
   segmentationController.countSegment
 );
 
@@ -125,7 +126,7 @@ router.get(
  */
 router.get(
   "/:id/contacts",
-  allowRoles("companyAdmin", "admin"),
+  allowRoles("companyAdmin"),
   segmentationController.listContactsBySegment
 );
 

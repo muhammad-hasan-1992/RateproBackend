@@ -1,48 +1,48 @@
-// // utils/emailTransporter.js
-// const nodemailer = require('nodemailer');
-
-// let transporter;
-
-// const getTransporter = () => {
-//   if (!transporter) {
-//     transporter = nodemailer.createTransport({
-//       host: process.env.SMTP_HOST,
-//       port: Number(process.env.SMTP_PORT),
-//       secure: false,
-//       auth: {
-//         user: process.env.SMTP_USER,
-//         pass: process.env.SMTP_PASS,
-//       },
-//       tls: {
-//         rejectUnauthorized: false // Kabhi kabhi cloud servers par self-signed certificates ka issue aata hai, ye usay handle kar leta hai
-//       },
-//     });
-//   }
-
-//   return transporter;
-// };
-
-// module.exports = getTransporter;
 // utils/emailTransporter.js
-// utils/emailTransporter.js
+//
+// Email transport using SendGrid.
+// Reads API key via configService (DB → ENV → throw).
+// Lazy-initializes on first send to allow async config lookup.
+
 const sgMail = require('@sendgrid/mail');
+const configService = require('../services/configService');
 
-// API Key ko set karein
-sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+let _initialized = false;
 
+/**
+ * Ensure SendGrid is initialized with the API key from configService.
+ * Called once before the first send; subsequent calls are a no-op.
+ */
+const ensureInitialized = async () => {
+  if (_initialized) return;
+
+  const apiKey = await configService.getConfig('SENDGRID_API_KEY', {
+    sensitive: true, // DB → ENV → THROW (no fallback)
+  });
+
+  sgMail.setApiKey(apiKey);
+  _initialized = true;
+};
+
+/**
+ * Get the email transporter (SendGrid adapter).
+ * Maintains the same interface as before for backward compatibility.
+ * @returns {{ sendMail: Function }}
+ */
 const getTransporter = () => {
-  // Hum abhi bhi purane structure ko follow kar rahe hain taake code crash na ho
   return {
     sendMail: async (mailOptions) => {
+      await ensureInitialized();
+
       const msg = {
         to: mailOptions.to,
-        from: mailOptions.from, // Ensure karein ye verified email hai
+        from: mailOptions.from,
         subject: mailOptions.subject,
         text: mailOptions.text,
         html: mailOptions.html,
       };
       return sgMail.send(msg);
-    }
+    },
   };
 };
 

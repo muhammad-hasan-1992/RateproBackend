@@ -5,7 +5,7 @@ const { upload } = require("../middlewares/multer");
 const { protect } = require("../middlewares/authMiddleware");
 const { allowRoles } = require("../middlewares/roleMiddleware");
 const { allowPermission } = require("../middlewares/permissionMiddleware");
-const {} = require("../middlewares/tenantMiddleware");
+const { setTenantId } = require("../middlewares/tenantMiddleware");
 
 const {
   getAllSurveyTemplates,
@@ -25,21 +25,7 @@ const {
 // 🟡 PROTECTED ROUTES
 router.use(protect);
 
-// 🧩 Set Tenant ID (same as surveyRoutes)
-const setTenantId = (req, res, next) => {
-  if (req.user.role === "admin") return next();
-  if (!req.user.tenant) {
-    return res
-      .status(403)
-      .json({ message: "Access denied: No tenant associated with this user" });
-  }
-  req.tenantId = req.user.tenant._id
-    ? req.user.tenant._id.toString()
-    : req.user.tenant.toString();
-  next();
-};
-
-// Apply tenant check after authentication
+// 🧩 Tenant Context (canonical from tenantMiddleware.js)
 router.use(setTenantId);
 
 // 🧠 ADMIN & COMPANY ADMIN ROUTES

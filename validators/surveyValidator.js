@@ -26,7 +26,15 @@ exports.validateSurveyCreate = (data) => {
       required: Joi.boolean().default(false),
       description: Joi.string().allow("", null),
       settings: Joi.object().unknown(true).default({}),
-      logicRules: Joi.array().default([]),
+      // Enhanced logic rules validation
+      logicRules: Joi.array().items(Joi.object({
+        condition: Joi.object({
+          operator: Joi.string().valid('equals', 'notEquals', 'greaterThan', 'lessThan', 'includes').required(),
+          value: Joi.any().required()
+        }).required(),
+        nextQuestionId: Joi.string().required()
+      })).max(10).default([]),  // Soft limit: max 10 rules per question
+      defaultNextQuestionId: Joi.string().allow(null).default(null),
       translations: Joi.object().default({})
     }).unknown(true)).default([]), // Allow unknown fields in questions
 
@@ -70,6 +78,9 @@ exports.validateSurveyCreate = (data) => {
     // Status
     status: Joi.string().valid("draft", "active", "scheduled", "inactive", "closed", "published").default("draft"),
 
+    // Responsible member assignment (ObjectId as 24-char hex string)
+    responsibleUserId: Joi.string().regex(/^[0-9a-fA-F]{24}$/).allow(null).optional(),
+
     // Metadata
     metadata: Joi.object().unknown(true).default({})
 
@@ -85,7 +96,21 @@ exports.validateSurveyUpdate = (data) => {
     category: Joi.string().allow("", null).optional(),
     language: Joi.string().valid("en", "ar").default("en"),
     themeColor: Joi.string().allow("", null).optional(),
-    questions: Joi.array().items(Joi.object().unknown(true)).optional(),
+    questions: Joi.array().items(Joi.object({
+      id: Joi.alternatives().try(Joi.string(), Joi.number()).allow("", null),
+      questionText: Joi.string().allow("", null),
+      title: Joi.string().allow("", null),
+      type: Joi.string().optional(),
+      options: Joi.array().default([]),
+      logicRules: Joi.array().items(Joi.object({
+        condition: Joi.object({
+          operator: Joi.string().valid('equals', 'notEquals', 'greaterThan', 'lessThan', 'includes').required(),
+          value: Joi.any().required()
+        }).required(),
+        nextQuestionId: Joi.string().required()
+      })).max(10).default([]),
+      defaultNextQuestionId: Joi.string().allow(null).default(null)
+    }).unknown(true)).optional(),
     settings: Joi.object().unknown(true).optional(),
     sections: Joi.array().optional(),
     translations: Joi.object().optional(),
@@ -97,6 +122,7 @@ exports.validateSurveyUpdate = (data) => {
     ).optional(),
     publishSettings: Joi.object().unknown(true).optional(),
     status: Joi.string().valid("draft", "active", "scheduled", "inactive", "closed", "published").optional(),
+    responsibleUserId: Joi.string().regex(/^[0-9a-fA-F]{24}$/).allow(null).optional(),
     metadata: Joi.object().unknown(true).optional()
   }).options({ stripUnknown: false, allowUnknown: true });
 

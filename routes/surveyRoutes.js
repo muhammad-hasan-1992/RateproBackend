@@ -32,6 +32,7 @@ const deactivateSurvey = require("../controllers/survey/deactivateSurvey.control
 const { toggleSurveyStatus } = require("../controllers/survey/toggleStatus.controller");
 const { scheduleSurvey } = require("../controllers/survey/scheduleSurvey.controller");
 const setAudience = require("../controllers/survey/setAudience.controller");
+const getTenantMembers = require("../controllers/survey/getTenantMembers.controller");
 
 // Survey Permission Middleware (department-scoped)
 const { surveyPermission } = require("../middlewares/surveyPermissionMiddleware");
@@ -152,6 +153,15 @@ router.get(
   allowRoles("companyAdmin", "member"),
   allowPermission("survey:read"),
   listSurveys
+);
+
+// Responsible member assignment — must be before /:id to avoid route capture
+router.get(
+  "/tenant-members",
+  tenantCheck,
+  allowRoles("companyAdmin"),
+  allowPermission("survey:create"),
+  getTenantMembers
 );
 
 router.get(

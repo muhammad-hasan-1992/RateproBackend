@@ -1,5 +1,6 @@
 // controllers/survey/updateSurvey.controller.js
 const Survey = require("../../models/Survey");
+const User = require("../../models/User");
 const { validateSurveyUpdate } = require("../../validators/surveyValidator");
 const Logger = require("../../utils/auditLog");
 const publishService = require("../../services/survey/publishService");
@@ -61,6 +62,36 @@ module.exports = async function updateSurvey(req, res, next) {
       return res.status(403).json({
         message: "Only draft surveys can be edited. Published/active surveys are locked.",
       });
+    }
+
+    // ── Validate responsibleUserId if provided (FIX #4: Full security) ──
+    if (req.body.responsibleUserId) {
+      const assignedUser = await User.findOne({
+        _id: req.body.responsibleUserId,
+        tenant: req.user.tenant,
+        isActive: true,
+        deleted: false,
+        role: { $in: ['companyAdmin', 'member'] }
+      });
+      if (!assignedUser) {
+        return res.status(400).json({
+          message: 'Invalid responsible user: must be an active member or company admin in the same tenant'
+        });
+      }
+
+      // Audit log for responsible user change
+      if (req.body.responsibleUserId !== survey.responsibleUserId?.toString()) {
+        Logger.info('survey_responsible_change', 'Responsible user changed', {
+          context: {
+            surveyId,
+            previousResponsible: survey.responsibleUserId,
+            newResponsible: req.body.responsibleUserId,
+            changedBy: req.user._id,
+            tenantId: req.user.tenant
+          },
+          req
+        });
+      }
     }
 
     Object.assign(survey, req.body);

@@ -2,6 +2,7 @@
 const Survey = require("../../models/Survey");
 const Contact = require("../../models/ContactManagement");
 const Tenant = require("../../models/Tenant");
+const Notification = require("../../models/Notification");
 const { validateSurveyForPublish } = require("../../validators/publishValidator");
 const resolveAudience = require("../distribution/resolveAudienceService");
 const { createBulkSurveyInvites } = require("../distribution/createSurveyInvitesService");  // 🔥 FIX
@@ -16,7 +17,7 @@ const parseTargetAudience = (targetAudience = [], selectedContacts = []) => {
   const segmentIds = [];
   const categoryIds = [];
   const contactIds = [...selectedContacts]; // custom selected contacts
-  
+
   for (const item of targetAudience) {
     if (item.startsWith('segment_')) {
       segmentIds.push(item.replace('segment_', ''));
@@ -25,7 +26,7 @@ const parseTargetAudience = (targetAudience = [], selectedContacts = []) => {
     }
     // 'custom' is handled via selectedContacts
   }
-  
+
   return { segmentIds, categoryIds, contactIds };
 };
 
@@ -40,11 +41,11 @@ const parseTargetAudience = (targetAudience = [], selectedContacts = []) => {
 module.exports.publish = async ({ surveyId, surveyData, tenantId, userId }) => {
   // ✅ Ensure tenantId is just the ID
   const tenantObjectId = tenantId?._id || tenantId;
-  
-  console.log("📦 [publishService.publish] Starting", { 
-    surveyId, 
+
+  console.log("📦 [publishService.publish] Starting", {
+    surveyId,
     hasSurveyData: !!surveyData,
-    tenantId: tenantObjectId?.toString() 
+    tenantId: tenantObjectId?.toString()
   });
 
   let survey;
@@ -54,7 +55,7 @@ module.exports.publish = async ({ surveyId, surveyData, tenantId, userId }) => {
   // ═══════════════════════════════════════════════════════════
   if (surveyId) {
     console.log("📋 [publishService] Loading existing survey...");
-    
+
     survey = await Survey.findOne({
       _id: surveyId,
       tenant: tenantObjectId,
@@ -64,15 +65,15 @@ module.exports.publish = async ({ surveyId, surveyData, tenantId, userId }) => {
     if (!survey) {
       throw new Error("Survey not found");
     }
-    
+
     // ✅ FIX: Allow publishing of drafts OR surveys being republished
     if (survey.status === "active" && !surveyData) {
       throw new Error("Survey is already published. Use update endpoint for changes.");
     }
-    
+
     console.log("📋 [publishService] Survey loaded:", survey._id, "Status:", survey.status);
   }
-  
+
   // ═══════════════════════════════════════════════════════════
   // CASE 2: Create new survey & publish directly
   // ═══════════════════════════════════════════════════════════
@@ -84,13 +85,13 @@ module.exports.publish = async ({ surveyId, surveyData, tenantId, userId }) => {
       targetAudience: surveyData.targetAudience,
       selectedContacts: surveyData.selectedContacts?.length
     });
-    
+
     // ✅ Parse targetAudience from frontend format
     const parsedAudience = parseTargetAudience(
-      surveyData.targetAudience, 
+      surveyData.targetAudience,
       surveyData.selectedContacts || []
     );
-    
+
     console.log("📋 [publishService] Parsed audience:", parsedAudience);
 
     // ✅ Fetch contact details for embedded documents
@@ -100,13 +101,13 @@ module.exports.publish = async ({ surveyId, surveyData, tenantId, userId }) => {
         _id: { $in: parsedAudience.contactIds },
         tenantId: tenantObjectId
       }).select('name email phone');
-      
+
       contactsData = contacts.map(c => ({
         name: c.name || '',
         email: c.email || '',
         phone: c.phone || ''
       }));
-      
+
       console.log("📋 [publishService] Fetched contacts:", contactsData.length);
     }
 
@@ -144,7 +145,7 @@ module.exports.publish = async ({ surveyId, surveyData, tenantId, userId }) => {
     await survey.save();
     console.log("📋 [publishService] New survey created:", survey._id);
   }
-  
+
   // ═══════════════════════════════════════════════════════════
   // ERROR: No survey ID or data provided
   // ═══════════════════════════════════════════════════════════
@@ -165,14 +166,14 @@ module.exports.publish = async ({ surveyId, surveyData, tenantId, userId }) => {
 
   // Resolve recipients using resolveAudienceService
   console.log("👥 [publishService] Resolving audience...");
-  
+
   const audience = survey.targetAudience || {};
-  
+
   // ✅ Use stored IDs for new surveys, or extract from embedded contacts for existing drafts
   let contactIdsForResolve = [];
   let segmentIdsForResolve = [];
   let categoryIdsForResolve = [];  // 🔥 ADD THIS
-  
+
   if (survey._parsedAudienceIds) {
     // New survey - use the parsed IDs we stored
     contactIdsForResolve = survey._parsedAudienceIds.contactIds || [];
@@ -211,7 +212,7 @@ module.exports.publish = async ({ surveyId, surveyData, tenantId, userId }) => {
 
   // Create invites using createSurveyInvitesService
   console.log("📨 [publishService] Creating invites...");
-  
+
   const invites = await createBulkSurveyInvites({  // 🔥 FIX: renamed function
     surveyId: survey._id,
     tenantId: tenantObjectId,
@@ -223,16 +224,16 @@ module.exports.publish = async ({ surveyId, surveyData, tenantId, userId }) => {
   // ✅ Send invitation emails
   if (invites.length > 0) {
     console.log("📧 [publishService] Sending invitation emails...");
-    
+
     // Fetch tenant for email template
     const tenant = await Tenant.findById(tenantObjectId).select('name logoUrl');
-    
+
     await sendSurveyInvites({
       survey,
       invites,
       tenant
     });
-    
+
     console.log("📧 [publishService] Invitation emails sent");
   }
 
@@ -257,6 +258,30 @@ module.exports.publish = async ({ surveyId, surveyData, tenantId, userId }) => {
   });
 
   await survey.save();
+
+  // ── Create in-app notifications on publish ────────────────────────
+  try {
+    const notificationRecipients = [userId]; // Always notify creator
+    if (survey.responsibleUserId &&
+      survey.responsibleUserId.toString() !== userId.toString()) {
+      notificationRecipients.push(survey.responsibleUserId);
+    }
+    await Notification.createBatch(notificationRecipients.map(uid => ({
+      user: uid,
+      scope: "tenant",
+      tenant: tenantObjectId,
+      title: "Survey Published",
+      message: `Survey "${survey.title}" has been published`,
+      type: "survey",
+      priority: "medium",
+      reference: { type: "Survey", id: survey._id },
+      actionUrl: `/app/surveys/${survey._id}`,
+      source: "system"
+    })));
+  } catch (notifErr) {
+    // Non-blocking: notification failure should not fail the publish
+    console.error("[publishService] Notification creation failed:", notifErr.message);
+  }
 
   console.log("✅ [publishService] Survey published successfully");
 

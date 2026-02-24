@@ -1,6 +1,7 @@
 // controllers/survey/createSurvey.controller.js
 
 const Survey = require("../../models/Survey");
+const User = require("../../models/User");
 const { validateSurveyCreate } = require("../../validators/surveyValidator");
 const Logger = require("../../utils/auditLog");
 
@@ -11,11 +12,29 @@ module.exports = async function createSurvey(req, res, next) {
       return res.status(400).json({ message: error.details[0].message });
     }
 
-    const { targetAudience, publishSettings, ...surveyData } = req.body;
+    const { targetAudience, publishSettings, responsibleUserId, ...surveyData } = req.body;
+
+    // ── Validate responsibleUserId (FIX #4: Full security check) ──────
+    let validatedResponsibleUserId = null;
+    if (responsibleUserId) {
+      const assignedUser = await User.findOne({
+        _id: responsibleUserId,
+        tenant: req.user.tenant,
+        isActive: true,
+        deleted: false,
+        role: { $in: ['companyAdmin', 'member'] }
+      });
+      if (!assignedUser) {
+        return res.status(400).json({
+          message: 'Invalid responsible user: must be an active member or company admin in the same tenant'
+        });
+      }
+      validatedResponsibleUserId = assignedUser._id;
+    }
 
     // Transform targetAudience array to object format if needed
     let audienceObj = { audienceType: "custom", categories: [], users: [], contacts: [] };
-    
+
     if (Array.isArray(targetAudience)) {
       // Frontend sends array like ["customers", "employees"]
       if (targetAudience.includes("all")) {
@@ -36,7 +55,7 @@ module.exports = async function createSurvey(req, res, next) {
         schedule.publishedAt = new Date();
         schedule.startDate = new Date();
       } else if (publishSettings.scheduleDate) {
-        const startDate = publishSettings.scheduleTime 
+        const startDate = publishSettings.scheduleTime
           ? new Date(`${publishSettings.scheduleDate}T${publishSettings.scheduleTime}`)
           : new Date(publishSettings.scheduleDate);
         schedule.startDate = startDate;
@@ -53,6 +72,7 @@ module.exports = async function createSurvey(req, res, next) {
       schedule,
       tenant: req.user.tenant,
       createdBy: req.user._id,
+      responsibleUserId: validatedResponsibleUserId,
       deleted: false
     });
 

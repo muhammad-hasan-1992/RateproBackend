@@ -32,6 +32,8 @@ const questionSchema = new mongoose.Schema({
       nextQuestionId: { type: String }, // string reference to another question.id
     },
   ],
+  // Else-branch: if no logic rule matches, jump to this question (null = continue sequentially)
+  defaultNextQuestionId: { type: String, default: null },
 });
 
 const surveySchema = new mongoose.Schema(
@@ -79,6 +81,13 @@ const surveySchema = new mongoose.Schema(
     status: { type: String, enum: ["active", "inactive", "draft", "scheduled", "published", "closed"], default: "draft" }, // ← "scheduled" add kiya!
 
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
+    // Responsible member assigned to manage this survey (null = creator is responsible)
+    responsibleUserId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+      index: true
+    },
     totalResponses: { type: Number, default: 0 },
     lastResponseAt: { type: Date }, // 🔥 NEW: Track latest response time for sorting
     averageScore: { type: Number, default: 0 },
@@ -193,6 +202,7 @@ const surveySchema = new mongoose.Schema(
 // Indexes for fast queries
 surveySchema.index({ tenant: 1 });
 surveySchema.index({ status: 1 });
+surveySchema.index({ status: 1, tenant: 1 }); // Compound index for filtered listing
 surveySchema.index({ "schedule.startDate": 1 });
 surveySchema.index({ "targetAudience.contacts.phone": 1 });
 surveySchema.index({ "targetAudience.contacts.email": 1 });

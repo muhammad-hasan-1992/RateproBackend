@@ -22,7 +22,7 @@ const sendEmail = async ({
 
     if (templateType) {
       try {
-        const templateResult = renderTemplate(templateType, templateData);
+        const templateResult = await renderTemplate({ templateType, templateData });
         if (templateResult) {
           finalHTML = templateResult.html || finalHTML;
           finalSubject = templateResult.subject || finalSubject;

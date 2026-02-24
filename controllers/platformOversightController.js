@@ -1,5 +1,5 @@
 // controllers/platformOversightController.js
-const Contact = require("../models/Contact");
+const Contact = require("../models/ContactManagement");
 const Survey = require("../models/Survey");
 const Action = require("../models/Action");
 const User = require("../models/User");

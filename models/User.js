@@ -28,8 +28,10 @@ const userSchema = new mongoose.Schema({
     required: function () {
       return this.authProvider === "local";
     },
-    minlength: 6,
+    minlength: 8,
   },
+  // Track last 3 hashed passwords for reuse prevention
+  previousPasswords: [{ type: String }],
   phone: { type: String },
   bio: { type: String, default: "" },
   avatar: {

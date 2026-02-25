@@ -10,6 +10,7 @@ const cloudinary = require("../utils/cloudinary");
 const moment = require("moment");
 const getBaseURL = require("../utils/getBaseURL");
 const Logger = require("../utils/logger");
+const { validatePasswordComplexity, PASSWORD_RULES } = require("../utils/passwordValidator");
 const EmailTemplate = require("../models/EmailTemplate");
 
 // Helper: Generate OTP Code
@@ -66,7 +67,7 @@ const verifyResetCodeSchema = Joi.object({
 const resetPasswordSchema = Joi.object({
     email: Joi.string().email().required(),
     code: Joi.string().length(6).required(),
-    newPassword: Joi.string().min(6).required(),
+    newPassword: Joi.string().min(8).required(),
 });
 
 const updateProfileSchema = Joi.object({
@@ -74,7 +75,7 @@ const updateProfileSchema = Joi.object({
     phone: Joi.string().pattern(/^\+?\d{10,15}$/).allow("").optional(), // Allow phone with validation
     bio: Joi.string().max(500).allow("").optional(), // Allow bio with max length
     currentPassword: Joi.string().optional(),
-    newPassword: Joi.string().min(6).optional(),
+    newPassword: Joi.string().min(8).optional(),
 }).with("newPassword", "currentPassword");
 
 
@@ -553,7 +554,7 @@ exports.resendOtp = async (req, res, next) => {
 // };
 
 exports.loginUser = async (req, res, next) => {
-   
+
     // Redact password from logs
     const safeBodyForLog = { ...req.body };
     if (safeBodyForLog.password) safeBodyForLog.password = "[REDACTED]";
@@ -571,7 +572,7 @@ exports.loginUser = async (req, res, next) => {
         }
 
         const { email, password } = req.body;
-        
+
         const user = await User.findOne({ email })
             .select("+password")
             .populate([
@@ -608,20 +609,20 @@ exports.loginUser = async (req, res, next) => {
             return res.status(401).json({ message: "Invalid password" });
         }
         if (!user.isVerified) {
-           
+
             await OTP.deleteMany({ email, purpose: "verify" });
 
             const otpCode = generateOTP();
             const expiresAt = moment().add(process.env.OTP_EXPIRE_MINUTES, "minutes").toDate();
             await OTP.create({ email, code: otpCode, expiresAt, purpose: "verify" });
 
-            
+
             const baseURL = ["admin", "companyAdmin", "member"].includes(user.role)
                 ? process.env.FRONTEND_URL
                 : process.env.RATEPRO_URL;
 
             const verificationLink = `${baseURL}/verify-email?code=${otpCode}&email=${email}`;
-           
+
             try {
                 const template = await EmailTemplate.findOne({
                     type: "verify_Email_On_Login",
@@ -649,7 +650,7 @@ exports.loginUser = async (req, res, next) => {
                         templateType: template.type,
                         templateData
                     });
-                    } else {
+                } else {
                     sendEmail({
                         to: email,
                         subject: "Verify Your Email",
@@ -658,7 +659,7 @@ exports.loginUser = async (req, res, next) => {
                <p>Click here: <a href="${verificationLink}">${verificationLink}</a></p>
                <p>This link expires in ${process.env.OTP_EXPIRE_MINUTES} minute(s).</p>`
                     });
-                   }
+                }
             } catch (emailError) {
                 console.error("❌ Error sending verification email:", emailError);
             }
@@ -720,7 +721,7 @@ exports.loginUser = async (req, res, next) => {
         // Update last login
         user.lastLogin = Date.now();
         await user.save();
-        
+
         const safeUser = {
             _id: user._id,
             name: user.name,
@@ -945,8 +946,37 @@ exports.resetPassword = async (req, res, next) => {
             return res.status(400).json({ message: "OTP expired" });
         }
 
+        // Password complexity validation
+        const user = await User.findOne({ email });
+        const { valid, failures } = validatePasswordComplexity(newPassword, email);
+        if (!valid) {
+            return res.status(400).json({
+                message: "Password does not meet requirements",
+                failures,
+            });
+        }
+
+        // Password reuse prevention
+        if (user) {
+            const previousHashes = user.previousPasswords || [];
+            for (const oldHash of previousHashes) {
+                const reused = await bcrypt.compare(newPassword, oldHash);
+                if (reused) {
+                    return res.status(400).json({
+                        message: "Password has been used recently",
+                        failures: [`Cannot reuse any of your last ${PASSWORD_RULES.HISTORY_COUNT} passwords`],
+                    });
+                }
+            }
+        }
+
         const hashed = await bcrypt.hash(newPassword, 12);
-        await User.findOneAndUpdate({ email }, { password: hashed });
+        const updateFields = { password: hashed };
+        if (user) {
+            const oldHash = user.password;
+            updateFields.previousPasswords = [oldHash, ...(user.previousPasswords || [])].slice(0, PASSWORD_RULES.HISTORY_COUNT);
+        }
+        await User.findOneAndUpdate({ email }, updateFields);
         await OTP.deleteMany({ email, purpose: "reset" });
 
         // Logger.info('resetPassword', 'Password reset successful', {
@@ -1013,7 +1043,32 @@ exports.updateProfile = async (req, res, next) => {
                 });
                 return res.status(400).json({ message: "Current password incorrect" });
             }
+
+            // Password complexity validation
+            const { valid, failures } = validatePasswordComplexity(newPassword, user.email);
+            if (!valid) {
+                return res.status(400).json({
+                    message: "Password does not meet requirements",
+                    failures,
+                });
+            }
+
+            // Password reuse prevention (last 3)
+            const previousHashes = user.previousPasswords || [];
+            for (const oldHash of previousHashes) {
+                const reused = await bcrypt.compare(newPassword, oldHash);
+                if (reused) {
+                    return res.status(400).json({
+                        message: "Password has been used recently",
+                        failures: [`Cannot reuse any of your last ${PASSWORD_RULES.HISTORY_COUNT} passwords`],
+                    });
+                }
+            }
+
+            // Store old password hash before overwriting
+            const oldHash = user.password;
             user.password = await bcrypt.hash(newPassword, 12);
+            user.previousPasswords = [oldHash, ...previousHashes].slice(0, PASSWORD_RULES.HISTORY_COUNT);
         }
 
         // Restrict sensitive fields for non-admin

@@ -42,24 +42,30 @@ router.use(protect, setTenantId);
 // User picker for assignment dropdowns (all authenticated users can access)
 router.get('/picker', getTenantUsersForPicker);
 
-// Routes for admin and companyAdmin (no permission check)
+// ─── Static/specific routes FIRST (before /:id) ───
+
+// Bulk upload (companyAdmin only)
+router.post('/bulk-upload', protect, setTenantId, allowRoles('companyAdmin'), excelUpload.single('excel'), bulkCreateUsers);
+
+// Routes with sub-paths (must precede /:id to avoid param capture)
+router.put('/toggle/:id', allowRoles('admin', 'companyAdmin'), toggleActive);
+router.get('/export/:id', allowRoles('admin', 'companyAdmin'), exportUserDataPDF);
+router.post('/notify/:id', allowRoles('admin', 'companyAdmin'), sendNotification);
+
+// ─── Generic CRUD routes for admin and companyAdmin ───
 router.post('/', allowRoles('admin', 'companyAdmin'), createUser);
 router.get('/', allowRoles('admin', 'companyAdmin'), getAllUsers);
 router.get('/:id', allowRoles('admin', 'companyAdmin'), getUserById);
 router.put('/:id', allowRoles('admin', 'companyAdmin'), upload.single('avatar'), updateUser);
 router.delete('/:id', allowRoles('admin', 'companyAdmin'), deleteUser);
-router.put('/toggle/:id', allowRoles('admin', 'companyAdmin'), toggleActive);
-router.get('/export/:id', allowRoles('admin', 'companyAdmin'), exportUserDataPDF);
-router.post('/notify/:id', allowRoles('admin', 'companyAdmin'), sendNotification);
-router.post('/bulk-upload', protect, setTenantId, allowRoles('companyAdmin'), excelUpload.single('excel'), bulkCreateUsers);
 
-// Routes for member with permission check
+// ─── Member routes with permission checks ───
+router.get('/export/:id', allowRoles('member'), allowPermission('user:export'), exportUserDataPDF);
+router.post('/notify/:id', allowRoles('member'), allowPermission('user:notify'), sendNotification);
 router.post('/', allowRoles('member'), allowPermission('user:create'), createUser);
 router.get('/', allowRoles('member'), allowPermission('user:read'), getAllUsers);
 router.get('/:id', allowRoles('member'), allowPermission('user:read'), getUserById);
 router.put('/:id', allowRoles('member'), allowPermission('user:update'), upload.single('avatar'), updateUser);
 router.delete('/:id', allowRoles('member'), allowPermission('user:delete'), deleteUser);
-router.get('/export/:id', allowRoles('member'), allowPermission('user:export'), exportUserDataPDF);
-router.post('/notify/:id', allowRoles('member'), allowPermission('user:notify'), sendNotification);
 
 module.exports = router;

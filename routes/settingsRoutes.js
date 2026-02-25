@@ -59,7 +59,7 @@ router.post(
 
 router.get(
     "/theme",
-    allowRoles("companyAdmin"),
+    allowRoles("admin", "companyAdmin"),
     getThemeSettings
 );
 

@@ -27,8 +27,13 @@ function set(key, value) {
   });
 }
 
+function invalidate(key) {
+  cache.delete(key);
+}
+
 module.exports = {
   get,
   set,
   makeKey,
+  invalidate,
 };

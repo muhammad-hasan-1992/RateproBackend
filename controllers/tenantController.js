@@ -142,24 +142,30 @@ exports.updateTenant = async (req, res, next) => {
     }
 
     // Check authorization
-    if (req.user.role !== 'companyAdmin') {
-      Logger.warn("updateTenant", "User not companyAdmin", {
-        context: {
-          userId: req.user?._id
-        },
-        req
-      });
-      return res.status(403).json({ message: 'User is not a companyAdmin' });
-    }
-    if (!req.user.tenant || req.user.tenant._id.toString() !== tenantId) {
-      Logger.warn("updateTenant", "Unauthorized tenant update attempt", {
+    // Admin → full access (skip ownership check, route middleware already validated)
+    // CompanyAdmin → must own the tenant
+    if (req.user.role === 'admin') {
+      // Platform admin can update any tenant — no ownership check needed
+    } else if (req.user.role === 'companyAdmin') {
+      if (!req.user.tenant || req.user.tenant._id.toString() !== tenantId) {
+        Logger.warn("updateTenant", "Unauthorized tenant update attempt", {
+          context: {
+            userId: req.user?._id,
+            tenantId
+          },
+          req
+        });
+        return res.status(403).json({ message: 'Unauthorized to update this tenant' });
+      }
+    } else {
+      Logger.warn("updateTenant", "Insufficient role for tenant update", {
         context: {
           userId: req.user?._id,
-          tenantId
+          role: req.user.role
         },
         req
       });
-      return res.status(403).json({ message: 'Unauthorized to update this tenant' });
+      return res.status(403).json({ message: 'Access denied: Insufficient privileges' });
     }
 
     // Validate and update/create departments
@@ -267,6 +273,22 @@ exports.updateTenant = async (req, res, next) => {
 // 🔹 READ tenant by ID
 exports.getTenant = async (req, res) => {
   try {
+    // Defense-in-depth: controller-level ownership check
+    if (req.user.role !== 'admin') {
+      const userTenantId = req.user.tenant?._id?.toString() || req.user.tenant?.toString();
+      if (userTenantId !== req.params.id) {
+        Logger.warn("getTenant", "Unauthorized cross-tenant access attempt", {
+          context: {
+            userId: req.user._id,
+            userTenant: userTenantId,
+            requestedTenant: req.params.id
+          },
+          req
+        });
+        return res.status(403).json({ message: 'Unauthorized to view this tenant' });
+      }
+    }
+
     const tenant = await Tenant.findById(req.params.id).populate('departments');
     if (!tenant) {
       Logger.warn("getTenant", "Tenant not found", {
@@ -302,7 +324,8 @@ exports.getTenant = async (req, res) => {
 exports.getMyTenant = async (req, res) => {
   try {
     const tenant = await Tenant.findById(req.user.tenant)
-      .populate('plan', 'name description features limits');
+      .populate('plan', 'name description features limits')
+      .populate('departments');
 
     if (!tenant) {
       return res.status(404).json({ message: "Tenant not found" });
@@ -314,6 +337,7 @@ exports.getMyTenant = async (req, res) => {
         _id: tenant._id,
         name: tenant.name,
         plan: tenant.plan,
+        departments: tenant.departments || [],
         features: tenant.features || {},
         limits: tenant.limits || {},
         usage: tenant.usage || {}

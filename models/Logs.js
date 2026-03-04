@@ -8,13 +8,16 @@ const logSchema = new mongoose.Schema({
     index: true
   },
 
-  // Structured action type for survey audit trail
+  // Structured action type for audit trail
   action: {
     type: String,
     enum: [
       'survey:delete', 'survey:activate', 'survey:deactivate',
       'survey:create', 'survey:update', 'survey:publish',
       'user:create', 'user:update', 'user:delete',
+      'subscription:created', 'subscription:upgraded',
+      'subscription:downgrade_scheduled', 'subscription:cancelled',
+      'subscription:activated',
       null // Allow null for legacy logs
     ],
     default: null

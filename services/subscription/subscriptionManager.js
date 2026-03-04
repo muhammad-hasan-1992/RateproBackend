@@ -656,14 +656,19 @@ class SubscriptionManager {
 
     async _logSubscriptionAction(tenantId, action, data) {
         try {
+            // Convert SUBSCRIPTION_UPGRADED → subscription:upgraded to match schema enum
+            const normalizedAction = action
+                .replace('SUBSCRIPTION_', 'subscription:')
+                .replace('_VIA_WEBHOOK', '')
+                .toLowerCase();
+
             await Log.create({
                 tenantId,
-                action,
-                description: `Subscription action: ${action}`,
-                status: 'success',
-                logLevel: 'INFO',
+                action: normalizedAction,
+                message: `Subscription action: ${action}`,
+                level: 'INFO',
                 functionName: 'SubscriptionManager',
-                additionalData: data
+                context: data
             });
         } catch (error) {
             console.error('❌ Failed to log subscription action:', error.message);

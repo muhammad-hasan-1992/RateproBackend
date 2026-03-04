@@ -22,9 +22,14 @@ exports.getPublicPlans = async (req, res) => {
         featureDefinitions.forEach(f => {
             featureMap[f.code] = {
                 name: f.name,
+                description: f.description || null,
                 category: f.category,
                 type: f.type,
-                unit: f.unit
+                unit: f.unit,
+                isPublic: f.isPublic !== false,  // default true
+                displayOrder: f.displayOrder || 0,
+                icon: f.metadata?.icon || null,
+                tooltip: f.metadata?.tooltip || null
             };
         });
 
@@ -52,6 +57,15 @@ exports.getPublicPlans = async (req, res) => {
 exports.getCurrentSubscription = async (req, res) => {
     try {
         const tenantId = req.user.tenant;
+
+        // User may not have a tenant yet (webhook hasn't fired after payment)
+        if (!tenantId) {
+            return res.status(200).json({
+                success: true,
+                data: null,
+                message: 'No tenant provisioned yet'
+            });
+        }
 
         const subscriptionData = await featureFlagManager.getTenantFeatures(tenantId);
         const usageReport = await usageLimitsService.getUsageReport(tenantId);

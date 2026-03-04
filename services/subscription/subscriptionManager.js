@@ -7,7 +7,9 @@ const featureFlagManager = require('./featureFlagManager');
 const TenantSubscription = require('../../models/TenantSubscription');
 const PlanTemplate = require('../../models/PlanTemplate');
 const Tenant = require('../../models/Tenant');
+const User = require('../../models/User');
 const Log = require('../../models/Logs');
+const mongoose = require('mongoose');
 
 class SubscriptionManager {
     constructor() {
@@ -401,6 +403,12 @@ class SubscriptionManager {
             const event = await this.gateway.handleWebhook(payload, signature);
 
             switch (event.type) {
+                case 'checkout.completed':
+                    await this._handleCheckoutCompleted(event.data, event.raw);
+                    break;
+                case 'checkout.expired':
+                    await this._handleCheckoutExpired(event.data);
+                    break;
                 case 'subscription.created':
                 case 'subscription.updated':
                     await this._handleSubscriptionUpdate(event.data);
@@ -426,7 +434,137 @@ class SubscriptionManager {
         }
     }
 
-    // Private helper methods
+    // ============ CHECKOUT LIFECYCLE HANDLERS ============
+
+    /**
+     * Handle checkout.session.completed — Enterprise Pattern
+     * Creates Tenant + promotes User + creates TenantSubscription atomically
+     * This is the ONLY place where tenant provisioning happens for paid plans
+     */
+    async _handleCheckoutCompleted(data, rawEvent) {
+        const metadata = data.metadata || {};
+        const { userId, planCode, billingCycle, stripeCustomerId } = metadata;
+
+        if (!userId || !planCode) {
+            console.error('❌ checkout.completed missing metadata: userId or planCode');
+            return;
+        }
+
+        // Validate plan from DB (never trust metadata blindly)
+        const plan = await PlanTemplate.getByCode(planCode);
+        if (!plan) {
+            console.error(`❌ checkout.completed: plan not found: ${planCode}`);
+            return;
+        }
+
+        const user = await User.findById(userId);
+        if (!user) {
+            console.error(`❌ checkout.completed: user not found: ${userId}`);
+            return;
+        }
+
+        // Check if already provisioned (idempotency — Stripe retries for 3 days)
+        // Guard 1: User already has active tenant
+        if (user.tenant) {
+            const existingSub = await TenantSubscription.findOne({ tenant: user.tenant });
+            if (existingSub && existingSub.billing.status === 'active') {
+                console.log(`⚠️ checkout.completed: user ${userId} already provisioned, skipping`);
+                return;
+            }
+        }
+
+        // Guard 2: Stripe subscriptionId already exists (unique sparse index is DB-level safety net)
+        if (data.subscription) {
+            const dupeSub = await TenantSubscription.findOne({ 'payment.subscriptionId': data.subscription });
+            if (dupeSub) {
+                console.log(`⚠️ checkout.completed: subscriptionId ${data.subscription} already exists, skipping`);
+                return;
+            }
+        }
+
+        // ─── Atomic provisioning (MongoDB transaction) ───
+        const session = await mongoose.startSession();
+        session.startTransaction();
+
+        try {
+            // 1. Create Tenant
+            const tenantDocs = await Tenant.create([{
+                admin: user._id,
+                name: `${user.name}'s Organization`,
+                contactEmail: user.email
+            }], { session });
+            const tenant = tenantDocs[0];
+
+            // 2. Promote User to companyAdmin
+            user.role = 'companyAdmin';
+            user.tenant = tenant._id;
+            user.companyProfileUpdated = false;
+            user.pendingCheckoutSessionId = null;
+            await user.save({ session });
+
+            // 3. Create TenantSubscription
+            const subscriptionDocs = await TenantSubscription.create([{
+                tenant: tenant._id,
+                planTemplate: plan._id,
+                planCode: plan.code,
+                billing: {
+                    cycle: billingCycle || 'monthly',
+                    status: 'active',
+                    currentPeriodStart: data.subscription ? new Date() : undefined,
+                    currentPeriodEnd: data.subscription ? undefined : undefined
+                },
+                payment: {
+                    gateway: 'stripe',
+                    customerId: stripeCustomerId || data.customer,
+                    subscriptionId: data.subscription
+                },
+                onboardingStatus: 'awaiting_setup',
+                createdBy: user._id
+            }], { session });
+
+            // 4. Apply plan features
+            const subscription = subscriptionDocs[0];
+            await subscription.applyPlanFeatures(plan);
+
+            await session.commitTransaction();
+
+            console.log(`✅ Webhook provisioned: user=${userId} → tenant=${tenant._id} → plan=${planCode}`);
+
+            // 5. Log activation
+            await this._logSubscriptionAction(tenant._id, 'SUBSCRIPTION_ACTIVATED_VIA_WEBHOOK', {
+                planCode,
+                billingCycle,
+                stripeSessionId: data.id,
+                customerId: stripeCustomerId || data.customer
+            });
+
+        } catch (error) {
+            await session.abortTransaction();
+            console.error('❌ checkout.completed provisioning failed:', error.message);
+            throw error;
+        } finally {
+            session.endSession();
+        }
+    }
+
+    /**
+     * Handle checkout.session.expired — clears pending session so user can retry
+     */
+    async _handleCheckoutExpired(data) {
+        const metadata = data.metadata || {};
+        const { userId } = metadata;
+
+        if (!userId) return;
+
+        const user = await User.findById(userId);
+        if (user && user.pendingCheckoutSessionId) {
+            user.pendingCheckoutSessionId = null;
+            await user.save();
+            console.log(`⚠️ Checkout expired for user ${userId}, cleared pending session`);
+        }
+    }
+
+    // ============ SUBSCRIPTION LIFECYCLE HANDLERS ============
 
     async _handleSubscriptionUpdate(data) {
         const subscription = await TenantSubscription.findOne({
@@ -434,8 +572,43 @@ class SubscriptionManager {
         });
 
         if (subscription) {
-            subscription.billing.status = data.status;
-            subscription.billing.currentPeriodEnd = new Date(data.current_period_end * 1000);
+            // Map Stripe status to our status
+            const statusMap = {
+                'active': 'active',
+                'past_due': 'past_due',
+                'canceled': 'cancelled',
+                'incomplete': 'incomplete',
+                'trialing': 'trialing'
+            };
+            const newStatus = statusMap[data.status] || data.status;
+
+            // Use state machine validation
+            try {
+                subscription.validateStatusTransition(newStatus);
+                subscription.billing.status = newStatus;
+            } catch (err) {
+                console.warn(`⚠️ Ignoring invalid transition: ${err.message}`);
+            }
+
+            if (data.current_period_end) {
+                subscription.billing.currentPeriodEnd = new Date(data.current_period_end * 1000);
+            }
+            if (data.current_period_start) {
+                subscription.billing.currentPeriodStart = new Date(data.current_period_start * 1000);
+            }
+            if (data.cancel_at_period_end) {
+                subscription.billing.cancelAtPeriodEnd = true;
+                // Use cancel_pending if set to cancel at period end
+                if (subscription.billing.status === 'active') {
+                    try {
+                        subscription.validateStatusTransition('cancel_pending');
+                        subscription.billing.status = 'cancel_pending';
+                    } catch (err) {
+                        console.warn(`⚠️ cancel_pending transition failed: ${err.message}`);
+                    }
+                }
+            }
+
             await subscription.save();
         }
     }

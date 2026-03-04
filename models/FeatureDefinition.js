@@ -92,7 +92,7 @@ const featureDefinitionSchema = new mongoose.Schema({
 });
 
 // Indexes
-featureDefinitionSchema.index({ code: 1 }, { unique: true });
+// code index already created by `unique: true` in field definition
 featureDefinitionSchema.index({ category: 1, displayOrder: 1 });
 featureDefinitionSchema.index({ isActive: 1 });
 

@@ -31,6 +31,8 @@ const registerSchema = Joi.object({
         "string.min": "Password must be at least 6 characters",
         "any.required": "Password is required",
     }),
+    planCode: Joi.string().optional(),
+    billingCycle: Joi.string().valid('monthly', 'yearly').optional(),
 });
 
 const loginSchema = Joi.object({
@@ -93,7 +95,7 @@ exports.registerUser = async (req, res, next) => {
             return res.status(400).json({ message: error.details[0].message });
         }
 
-        const { name, email, password } = req.body;
+        const { name, email, password, planCode, billingCycle } = req.body;
 
         const userExists = await User.findOne({ email });
         if (userExists) {
@@ -120,6 +122,8 @@ exports.registerUser = async (req, res, next) => {
             tenant: null,
             createdBy: null,
             isVerified: false,
+            pendingPlanCode: planCode || null,
+            pendingBillingCycle: billingCycle || null,
         });
 
         await OTP.create({ email, code: otpCode, expiresAt, purpose: "verify" });
@@ -246,6 +250,16 @@ exports.verifyEmailLink = async (req, res, next) => {
         //     },
         //     req
         // });
+        // Redirect based on plan intent
+        if (user.pendingPlanCode) {
+            const planCode = user.pendingPlanCode;
+            const billing = user.pendingBillingCycle || 'monthly';
+            // Clear plan intent after use
+            user.pendingPlanCode = null;
+            user.pendingBillingCycle = null;
+            await user.save();
+            return res.redirect(`${baseURL}/auth-gateway?plan=${planCode}&billing=${billing}&verified=true`);
+        }
         return res.redirect(`${baseURL}/app`);
     } catch (err) {
         console.error("Verify email link error:", err);

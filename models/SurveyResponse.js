@@ -17,14 +17,14 @@ const answerSchema = new mongoose.Schema({
 // Analysis metadata schema for AI-enriched responses
 // Client Requirement 2: Each response enriched with analytical metadata
 const analysisSchema = new mongoose.Schema({
-  sentiment: { 
-    type: String, 
+  sentiment: {
+    type: String,
     enum: ["positive", "neutral", "negative"],
     default: null
   },
   sentimentScore: { type: Number, min: -1, max: 1 }, // -1 to 1 scale
-  urgency: { 
-    type: String, 
+  urgency: {
+    type: String,
     enum: ["low", "medium", "high"],
     default: null
   },
@@ -37,8 +37,8 @@ const analysisSchema = new mongoose.Schema({
     isSuggestion: { type: Boolean, default: false }
   },
   summary: { type: String }, // AI-generated summary
-  npsCategory: { 
-    type: String, 
+  npsCategory: {
+    type: String,
     enum: ["promoter", "passive", "detractor"],
     default: null
   },
@@ -94,7 +94,7 @@ const surveyResponseSchema = new mongoose.Schema(
     },
     lastSavedAt: { type: Date },
     currentQuestionIndex: { type: Number, default: 0 },
-    
+
     // Analysis metadata (populated by postResponseProcessor)
     // Client Requirement 2: Response-Level Content Analysis
     analysis: analysisSchema,
@@ -107,7 +107,7 @@ const surveyResponseSchema = new mongoose.Schema(
       location: { type: String, default: null }, // Country or City
       userAgent: { type: String, default: null } // Raw user agent string
     },
-    
+
     // Time tracking
     startedAt: { type: Date },
     completionTime: { type: Number }, // already exists, ensure it's populated
@@ -116,7 +116,7 @@ const surveyResponseSchema = new mongoose.Schema(
 );
 
 surveyResponseSchema.index({ tenant: 1, survey: 1 });
-surveyResponseSchema.index({ resumeToken: 1 });
+// resumeToken index already created by `unique: true` in field definition
 surveyResponseSchema.index({ "analysis.sentiment": 1 });
 surveyResponseSchema.index({ "analysis.npsCategory": 1 });
 // Add index for contact lookups

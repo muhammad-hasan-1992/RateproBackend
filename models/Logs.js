@@ -17,8 +17,7 @@ const logSchema = new mongoose.Schema({
       'user:create', 'user:update', 'user:delete',
       null // Allow null for legacy logs
     ],
-    default: null,
-    index: true
+    default: null
   },
 
   functionName: {

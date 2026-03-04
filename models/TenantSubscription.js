@@ -62,8 +62,8 @@ const tenantSubscriptionSchema = new mongoose.Schema({
         },
         status: {
             type: String,
-            enum: ['active', 'cancelled', 'past_due', 'trialing', 'unpaid'],
-            default: 'trialing'
+            enum: ['incomplete', 'active', 'cancelled', 'cancel_pending', 'past_due', 'trialing'],
+            default: 'incomplete'
         },
         currentPeriodStart: { type: Date },
         currentPeriodEnd: { type: Date },
@@ -110,17 +110,32 @@ const tenantSubscriptionSchema = new mongoose.Schema({
     updatedBy: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'User'
+    },
+
+    // Onboarding lifecycle (tied to subscription, not tenant)
+    onboardingStatus: {
+        type: String,
+        enum: ['pending', 'awaiting_setup', 'completed', null],
+        default: null
     }
 }, {
     timestamps: true
 });
 
 // Indexes
-tenantSubscriptionSchema.index({ tenant: 1 }, { unique: true });
+// tenant index already created by `unique: true` in field definition
 tenantSubscriptionSchema.index({ planCode: 1 });
 tenantSubscriptionSchema.index({ 'billing.status': 1 });
 tenantSubscriptionSchema.index({ 'payment.gateway': 1, 'payment.customerId': 1 });
 tenantSubscriptionSchema.index({ 'trial.endsAt': 1 });
+// Prevents duplicate provisioning from Stripe webhook retries
+// partialFilterExpression: only index docs where subscriptionId is a string (not null)
+tenantSubscriptionSchema.index(
+    { 'payment.subscriptionId': 1 },
+    { unique: true, partialFilterExpression: { 'payment.subscriptionId': { $type: 'string' } } }
+);
+// Optimized for polling endpoint (CheckoutSuccess page polls every 2-5s)
+tenantSubscriptionSchema.index({ tenant: 1, 'billing.status': 1, onboardingStatus: 1 });
 
 // Instance method: Check if a feature is enabled
 tenantSubscriptionSchema.methods.hasFeature = function (featureCode) {
@@ -131,6 +146,21 @@ tenantSubscriptionSchema.methods.hasFeature = function (featureCode) {
     if (feature.expiresAt && new Date() > feature.expiresAt) return false;
 
     return feature.enabled;
+};
+
+// Instance method: Validate billing status transition (state machine)
+tenantSubscriptionSchema.methods.validateStatusTransition = function (newStatus) {
+    const allowed = {
+        incomplete: ['active'],
+        trialing: ['active', 'past_due'],
+        active: ['past_due', 'cancelled', 'cancel_pending'],
+        cancel_pending: ['cancelled', 'active'],
+        past_due: ['active', 'cancelled'],
+    };
+    if (!(allowed[this.billing.status] || []).includes(newStatus)) {
+        throw new Error(`Invalid billing status transition: ${this.billing.status} → ${newStatus}`);
+    }
+    return true;
 };
 
 // Instance method: Get feature limit value

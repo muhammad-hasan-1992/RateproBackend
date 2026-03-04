@@ -9,6 +9,7 @@
 
 const Survey = require("../../models/Survey");
 const Logger = require("../../utils/auditLog");
+const { validateStatusTransition } = require("../../utils/surveyStateMachine");
 
 /**
  * Activate a survey (set status to 'active')
@@ -18,6 +19,9 @@ const Logger = require("../../utils/auditLog");
  * - User is NOT System Admin
  * - User has survey:activate permission
  * - User has department access to the survey
+ * 
+ * Guards (enforced here):
+ * - State machine: only inactive → active is allowed
  * 
  * @param {Request} req - Express request (req.survey pre-loaded by middleware)
  * @param {Response} res - Express response
@@ -36,12 +40,13 @@ module.exports = async function activateSurvey(req, res, next) {
             });
         }
 
-        // Check if already active
-        if (survey.status === 'active') {
+        // Guard: State machine transition check
+        const transition = validateStatusTransition(survey.status, 'active');
+        if (!transition.valid) {
             return res.status(400).json({
                 success: false,
-                message: "Survey is already active",
-                code: "SURVEY_ALREADY_ACTIVE"
+                message: transition.message,
+                code: "INVALID_STATUS_TRANSITION"
             });
         }
 

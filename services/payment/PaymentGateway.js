@@ -117,6 +117,24 @@ class PaymentGateway {
     }
 
     /**
+     * Create a product in the payment gateway
+     * @param {Object} productData - { name, description, metadata }
+     * @returns {Promise<Object>} - { productId, raw }
+     */
+    async createProduct(productData) {
+        throw new Error('Method createProduct() must be implemented');
+    }
+
+    /**
+     * Create a recurring price for a product
+     * @param {Object} priceData - { productId, unitAmount (cents), currency, interval ('month'|'year') }
+     * @returns {Promise<Object>} - { priceId, raw }
+     */
+    async createPrice(priceData) {
+        throw new Error('Method createPrice() must be implemented');
+    }
+
+    /**
      * Refund a payment
      * @param {string} paymentIntentId - Payment intent ID
      * @param {number} amount - Amount to refund (null for full refund)

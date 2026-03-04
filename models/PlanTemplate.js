@@ -107,7 +107,7 @@ const planTemplateSchema = new mongoose.Schema({
 });
 
 // Indexes
-planTemplateSchema.index({ code: 1 }, { unique: true });
+// code index already created by `unique: true` in field definition
 planTemplateSchema.index({ isActive: 1, isPublic: 1, displayOrder: 1 });
 
 // Virtual for yearly discount percentage

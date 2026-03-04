@@ -1,34 +1,26 @@
-// controllers/survey/deactivateSurvey.controller.js
+// controllers/survey/closeSurvey.controller.js
 // ============================================================================
-// Deactivate Survey Controller
+// Close Survey Controller
 // 
-// Permission: survey:deactivate
+// Permission: survey:deactivate (reused — tech debt: create survey:close later)
 // Scope: Department-scoped (enforced by surveyPermissionMiddleware)
-// Audit: Full audit logging with action, survey, tenant, department, user
+// Audit: Full audit logging
+//
+// Close vs Inactive:
+//   - inactive = temporarily paused, can be re-activated
+//   - closed = permanently stopped collecting responses, cannot reactivate
 // ============================================================================
 
-const Survey = require("../../models/Survey");
 const Logger = require("../../utils/auditLog");
 const { validateStatusTransition } = require("../../utils/surveyStateMachine");
 
 /**
- * Deactivate a survey (set status to 'inactive')
- * 
- * Prerequisites (enforced by middleware):
- * - User is authenticated
- * - User is NOT System Admin
- * - User has survey:deactivate permission
- * - User has department access to the survey
- * 
- * Guards (enforced here):
- * - State machine: only active → inactive is allowed
- * 
- * @param {Request} req - Express request (req.survey pre-loaded by middleware)
- * @param {Response} res - Express response
+ * Close a survey permanently (active → closed)
+ * Closed surveys can no longer accept responses or be re-activated.
+ * They can only transition to "archived".
  */
-module.exports = async function deactivateSurvey(req, res, next) {
+module.exports = async function closeSurvey(req, res, next) {
     try {
-        // Survey is pre-loaded and validated by surveyPermissionMiddleware
         const survey = req.survey;
         const user = req.user;
 
@@ -41,7 +33,7 @@ module.exports = async function deactivateSurvey(req, res, next) {
         }
 
         // Guard: State machine transition check
-        const transition = validateStatusTransition(survey.status, 'inactive');
+        const transition = validateStatusTransition(survey.status, 'closed');
         if (!transition.valid) {
             return res.status(400).json({
                 success: false,
@@ -50,30 +42,29 @@ module.exports = async function deactivateSurvey(req, res, next) {
             });
         }
 
-        // Update status
         const previousStatus = survey.status;
-        survey.status = 'inactive';
+        survey.status = 'closed';
         await survey.save();
 
-        // Audit log with all required fields
-        await Logger.info("survey_deactivate", "Survey deactivated", {
-            action: "survey:deactivate",
+        await Logger.info("survey_close", "Survey closed", {
+            action: "survey:close",
             surveyId: survey._id,
             tenantId: survey.tenant,
             departmentId: survey.department,
             userId: user._id,
             context: {
                 previousStatus,
-                newStatus: 'inactive',
+                newStatus: 'closed',
                 userRole: user.role,
-                surveyTitle: survey.title
+                surveyTitle: survey.title,
+                totalResponses: survey.totalResponses
             },
             req
         });
 
         res.json({
             success: true,
-            message: "Survey deactivated successfully",
+            message: "Survey closed successfully. It will no longer accept responses.",
             data: {
                 surveyId: survey._id,
                 status: survey.status
@@ -81,8 +72,8 @@ module.exports = async function deactivateSurvey(req, res, next) {
         });
 
     } catch (err) {
-        await Logger.error("survey_deactivate", "Survey deactivation failed", {
-            action: "survey:deactivate",
+        await Logger.error("survey_close", "Survey close failed", {
+            action: "survey:close",
             surveyId: req.params.surveyId || req.params.id,
             tenantId: req.user?.tenant,
             userId: req.user?._id,

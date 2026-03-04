@@ -119,7 +119,7 @@ const ActionPlanSchema = new mongoose.Schema({
 // ============================================================================
 
 // Enforce 1:1 relationship with Action
-ActionPlanSchema.index({ action: 1 }, { unique: true });
+// action index already created by `unique: true` in field definition
 
 // Tenant + status for filtering
 ActionPlanSchema.index({ tenant: 1, status: 1 });

@@ -8,7 +8,9 @@
 // ============================================================================
 
 const Survey = require("../../models/Survey");
+const SurveyResponse = require("../../models/SurveyResponse");
 const Logger = require("../../utils/auditLog");
+const { canDelete } = require("../../utils/surveyStateMachine");
 
 /**
  * Soft-delete a survey (set deleted=true, status='inactive')
@@ -18,6 +20,11 @@ const Logger = require("../../utils/auditLog");
  * - User is NOT System Admin
  * - User has survey:delete permission
  * - User has department access to the survey
+ * 
+ * Guards (enforced here):
+ * - Status: only draft/inactive/scheduled can be deleted
+ * - Response count: cross-checks model field AND live countDocuments
+ *   (destructive operation → dual source verification)
  * 
  * @param {Request} req - Express request (req.survey pre-loaded by middleware)
  * @param {Response} res - Express response
@@ -42,6 +49,18 @@ module.exports = async function deleteSurvey(req, res, next) {
         success: false,
         message: "Survey is already deleted",
         code: "SURVEY_ALREADY_DELETED"
+      });
+    }
+
+    // Guard: Cross-check live response count (destructive ops need dual verification)
+    const actualResponseCount = await SurveyResponse.countDocuments({ survey: survey._id });
+
+    const deleteCheck = canDelete(survey.status, survey.totalResponses || 0, actualResponseCount);
+    if (!deleteCheck.allowed) {
+      return res.status(400).json({
+        success: false,
+        message: deleteCheck.message,
+        code: "DELETE_NOT_ALLOWED"
       });
     }
 

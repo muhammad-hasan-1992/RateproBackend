@@ -5,6 +5,7 @@ const FeatureDefinition = require('../../models/FeatureDefinition');
 const PlanTemplate = require('../../models/PlanTemplate');
 const TenantSubscription = require('../../models/TenantSubscription');
 const featureFlagManager = require('../../services/subscription/featureFlagManager');
+const subscriptionManager = require('../../services/subscription/subscriptionManager');
 
 // ============ FEATURE DEFINITIONS ============
 
@@ -136,11 +137,14 @@ exports.deleteFeatureDefinition = async (req, res) => {
 // ============ PLAN TEMPLATES ============
 
 /**
- * @desc Create a new plan template
+ * @desc Create a new plan template (auto-creates Stripe product/prices for paid plans)
  * @route POST /api/admin/plans
  * @access Admin only
  */
 exports.createPlanTemplate = async (req, res) => {
+    let stripeProductId = null;
+    let createdPriceIds = [];
+
     try {
         const planData = {
             ...req.body,
@@ -154,14 +158,81 @@ exports.createPlanTemplate = async (req, res) => {
             });
         }
 
+        const monthlyPrice = planData.pricing?.monthly || 0;
+        const yearlyPrice = planData.pricing?.yearly || 0;
+        const currency = planData.pricing?.currency || 'USD';
+        const isPaid = monthlyPrice > 0 || yearlyPrice > 0;
+
+        // ─── Auto-create Stripe product + prices for paid plans ───
+        if (isPaid) {
+            try {
+                const gateway = subscriptionManager.gateway;
+
+                // Create (or reuse) Stripe product with planCode metadata for deduplication
+                const productResult = await gateway.createProduct({
+                    name: planData.name,
+                    description: planData.description || `${planData.name} subscription plan`,
+                    metadata: { planCode: planData.code }
+                });
+                stripeProductId = productResult.productId;
+
+                // Initialize stripe field
+                planData.stripe = { productId: stripeProductId };
+
+                // Create monthly price if applicable
+                if (monthlyPrice > 0) {
+                    const monthlyResult = await gateway.createPrice({
+                        productId: stripeProductId,
+                        unitAmount: Math.round(monthlyPrice * 100),
+                        currency: currency.toLowerCase(),
+                        interval: 'month'
+                    });
+                    planData.stripe.monthlyPriceId = monthlyResult.priceId;
+                    createdPriceIds.push(monthlyResult.priceId);
+                }
+
+                // Create yearly price if applicable
+                if (yearlyPrice > 0) {
+                    const yearlyResult = await gateway.createPrice({
+                        productId: stripeProductId,
+                        unitAmount: Math.round(yearlyPrice * 100),
+                        currency: currency.toLowerCase(),
+                        interval: 'year'
+                    });
+                    planData.stripe.yearlyPriceId = yearlyResult.priceId;
+                    createdPriceIds.push(yearlyResult.priceId);
+                }
+
+                console.log(`✅ Stripe auto-configured for plan "${planData.code}":`, planData.stripe);
+            } catch (stripeError) {
+                // ─── ROLLBACK: Archive any created Stripe resources ───
+                console.error('❌ Stripe auto-config failed, rolling back:', stripeError.message);
+                await _rollbackStripeResources(stripeProductId, createdPriceIds);
+
+                return res.status(500).json({
+                    success: false,
+                    message: `Stripe configuration failed: ${stripeError.message}`
+                });
+            }
+        }
+
+        // ─── Save to MongoDB ───
         const plan = await PlanTemplate.create(planData);
 
         res.status(201).json({
             success: true,
-            message: 'Plan template created',
+            message: isPaid
+                ? 'Plan template created with Stripe product/prices'
+                : 'Plan template created (free plan, no Stripe config needed)',
             data: plan
         });
     } catch (error) {
+        // DB save failed after Stripe success → rollback Stripe
+        if (stripeProductId) {
+            console.error('❌ DB save failed after Stripe success, rolling back Stripe resources');
+            await _rollbackStripeResources(stripeProductId, createdPriceIds);
+        }
+
         if (error.code === 11000) {
             return res.status(400).json({
                 success: false,
@@ -231,7 +302,7 @@ exports.getPlanTemplate = async (req, res) => {
 };
 
 /**
- * @desc Update a plan template
+ * @desc Update a plan template (handles Stripe pricing changes)
  * @route PUT /api/admin/plans/:id
  * @access Admin only
  */
@@ -240,14 +311,83 @@ exports.updatePlanTemplate = async (req, res) => {
         const { id } = req.params;
         const updateData = req.body;
 
-        const plan = await PlanTemplate.findByIdAndUpdate(id, updateData, { new: true });
-
-        if (!plan) {
+        // Fetch current plan to detect pricing changes
+        const currentPlan = await PlanTemplate.findById(id);
+        if (!currentPlan) {
             return res.status(404).json({
                 success: false,
                 message: 'Plan template not found'
             });
         }
+
+        const newMonthly = updateData.pricing?.monthly ?? currentPlan.pricing.monthly;
+        const newYearly = updateData.pricing?.yearly ?? currentPlan.pricing.yearly;
+        const currency = updateData.pricing?.currency || currentPlan.pricing.currency || 'USD';
+        const isPaid = newMonthly > 0 || newYearly > 0;
+        const wasPaid = (currentPlan.pricing.monthly > 0 || currentPlan.pricing.yearly > 0);
+        const pricingChanged = newMonthly !== currentPlan.pricing.monthly || newYearly !== currentPlan.pricing.yearly;
+        const nameChanged = updateData.name && updateData.name !== currentPlan.name;
+
+        // ─── Handle Stripe pricing changes ───
+        if (isPaid && pricingChanged) {
+            try {
+                const gateway = subscriptionManager.gateway;
+                let productId = currentPlan.stripe?.productId;
+
+                // If plan was free before → create Stripe product
+                if (!productId) {
+                    const productResult = await gateway.createProduct({
+                        name: updateData.name || currentPlan.name,
+                        description: updateData.description || currentPlan.description || `${currentPlan.name} subscription plan`,
+                        metadata: { planCode: currentPlan.code }
+                    });
+                    productId = productResult.productId;
+                }
+
+                if (!updateData.stripe) updateData.stripe = { ...currentPlan.stripe?.toObject?.() || {} };
+                updateData.stripe.productId = productId;
+
+                // Create new monthly price if changed
+                if (newMonthly > 0 && newMonthly !== currentPlan.pricing.monthly) {
+                    const monthlyResult = await gateway.createPrice({
+                        productId,
+                        unitAmount: Math.round(newMonthly * 100),
+                        currency: currency.toLowerCase(),
+                        interval: 'month'
+                    });
+                    updateData.stripe.monthlyPriceId = monthlyResult.priceId;
+                } else if (newMonthly === 0) {
+                    updateData.stripe.monthlyPriceId = null;
+                }
+
+                // Create new yearly price if changed
+                if (newYearly > 0 && newYearly !== currentPlan.pricing.yearly) {
+                    const yearlyResult = await gateway.createPrice({
+                        productId,
+                        unitAmount: Math.round(newYearly * 100),
+                        currency: currency.toLowerCase(),
+                        interval: 'year'
+                    });
+                    updateData.stripe.yearlyPriceId = yearlyResult.priceId;
+                } else if (newYearly === 0) {
+                    updateData.stripe.yearlyPriceId = null;
+                }
+
+                console.log(`✅ Stripe prices updated for plan "${currentPlan.code}":`, updateData.stripe);
+            } catch (stripeError) {
+                console.error('❌ Stripe update failed:', stripeError.message);
+                return res.status(500).json({
+                    success: false,
+                    message: `Stripe price update failed: ${stripeError.message}`
+                });
+            }
+        } else if (!isPaid && wasPaid && currentPlan.stripe?.productId) {
+            // Plan changed from paid → free: clear stripe IDs (keep product archived)
+            updateData.stripe = { productId: currentPlan.stripe.productId, monthlyPriceId: null, yearlyPriceId: null };
+            console.log(`ℹ️ Plan "${currentPlan.code}" changed to free, Stripe prices cleared`);
+        }
+
+        const plan = await PlanTemplate.findByIdAndUpdate(id, updateData, { new: true });
 
         res.status(200).json({
             success: true,
@@ -264,7 +404,7 @@ exports.updatePlanTemplate = async (req, res) => {
 };
 
 /**
- * @desc Delete a plan template
+ * @desc Delete a plan template (archives Stripe product if exists)
  * @route DELETE /api/admin/plans/:id
  * @access Admin only
  */
@@ -291,6 +431,18 @@ exports.deletePlanTemplate = async (req, res) => {
             });
         }
 
+        // Archive Stripe product if exists (Stripe doesn't allow deleting products)
+        if (plan.stripe?.productId) {
+            try {
+                const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+                await stripe.products.update(plan.stripe.productId, { active: false });
+                console.log(`🗄️ Stripe product archived: ${plan.stripe.productId}`);
+            } catch (stripeErr) {
+                // Non-critical: plan already deleted from DB
+                console.warn('⚠️ Failed to archive Stripe product:', stripeErr.message);
+            }
+        }
+
         res.status(200).json({
             success: true,
             message: 'Plan template deleted'
@@ -303,6 +455,34 @@ exports.deletePlanTemplate = async (req, res) => {
         });
     }
 };
+
+
+// ─── Helper: Rollback Stripe resources on failure ───
+async function _rollbackStripeResources(productId, priceIds) {
+    try {
+        const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+
+        for (const priceId of priceIds) {
+            try {
+                await stripe.prices.update(priceId, { active: false });
+                console.log(`🗄️ Rollback: archived Stripe price ${priceId}`);
+            } catch (e) {
+                console.warn(`⚠️ Rollback: failed to archive price ${priceId}:`, e.message);
+            }
+        }
+
+        if (productId) {
+            try {
+                await stripe.products.update(productId, { active: false });
+                console.log(`🗄️ Rollback: archived Stripe product ${productId}`);
+            } catch (e) {
+                console.warn(`⚠️ Rollback: failed to archive product ${productId}:`, e.message);
+            }
+        }
+    } catch (e) {
+        console.error('❌ Rollback helper failed:', e.message);
+    }
+}
 
 // ============ TENANT MANAGEMENT ============
 

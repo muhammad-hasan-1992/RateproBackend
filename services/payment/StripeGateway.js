@@ -281,7 +281,9 @@ class StripeGateway extends PaymentGateway {
             'customer.subscription.trial_will_end': 'subscription.trial_ending',
             'invoice.payment_succeeded': 'payment.succeeded',
             'invoice.payment_failed': 'payment.failed',
-            'invoice.upcoming': 'invoice.upcoming'
+            'invoice.upcoming': 'invoice.upcoming',
+            'checkout.session.completed': 'checkout.completed',
+            'checkout.session.expired': 'checkout.expired'
         };
 
         return {
@@ -331,6 +333,96 @@ class StripeGateway extends PaymentGateway {
         } catch (error) {
             console.error('❌ Stripe createSetupIntent error:', error.message);
             throw new Error(`Stripe setup intent creation failed: ${error.message}`);
+        }
+    }
+
+    /**
+     * Create a Stripe product (with deduplication via metadata search)
+     * If a product with the same planCode already exists, returns the existing one.
+     */
+    async createProduct(productData) {
+        try {
+            const { name, description, metadata = {} } = productData;
+
+            // ─── Dedup: Search for existing product by planCode metadata ───
+            if (metadata.planCode) {
+                try {
+                    const existing = await this.stripe.products.search({
+                        query: `metadata['planCode']:'${metadata.planCode}'`
+                    });
+
+                    if (existing.data.length > 0) {
+                        const product = existing.data[0];
+                        console.log(`♻️ Reusing existing Stripe product: ${product.id} (planCode: ${metadata.planCode})`);
+
+                        // Re-activate if archived
+                        if (!product.active) {
+                            await this.stripe.products.update(product.id, {
+                                active: true,
+                                name,
+                                description: description || undefined
+                            });
+                        }
+
+                        return {
+                            productId: product.id,
+                            reused: true,
+                            raw: product
+                        };
+                    }
+                } catch (searchErr) {
+                    // Search API may fail in test mode — proceed to create
+                    console.warn('⚠️ Stripe product search failed, proceeding to create:', searchErr.message);
+                }
+            }
+
+            // ─── Create new product ───
+            const product = await this.stripe.products.create({
+                name,
+                description: description || undefined,
+                metadata
+            });
+
+            console.log(`✅ Stripe product created: ${product.id} (${name})`);
+
+            return {
+                productId: product.id,
+                reused: false,
+                raw: product
+            };
+        } catch (error) {
+            console.error('❌ Stripe createProduct error:', error.message);
+            throw new Error(`Stripe product creation failed: ${error.message}`);
+        }
+    }
+
+    /**
+     * Create a recurring Stripe price for a product
+     */
+    async createPrice(priceData) {
+        try {
+            const { productId, unitAmount, currency = 'usd', interval } = priceData;
+
+            if (!['month', 'year'].includes(interval)) {
+                throw new Error(`Invalid interval: ${interval}. Must be 'month' or 'year'.`);
+            }
+
+            const price = await this.stripe.prices.create({
+                product: productId,
+                unit_amount: unitAmount,  // In cents
+                currency: currency.toLowerCase(),
+                recurring: { interval }
+            });
+
+            console.log(`✅ Stripe price created: ${price.id} (${unitAmount / 100} ${currency}/${interval})`);
+
+            return {
+                priceId: price.id,
+                raw: price
+            };
+        } catch (error) {
+            console.error('❌ Stripe createPrice error:', error.message);
+            throw new Error(`Stripe price creation failed: ${error.message}`);
         }
     }
 }

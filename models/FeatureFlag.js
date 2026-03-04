@@ -2,18 +2,18 @@
 const mongoose = require('mongoose');
 
 const featureFlagSchema = new mongoose.Schema({
-  tenant: { 
-    type: mongoose.Schema.Types.ObjectId, 
-    ref: 'Tenant', 
+  tenant: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Tenant',
     required: true,
-    unique: true 
+    unique: true
   }, // One flag set per tenant
 
   // Core Billing (jo pehle Subscription mein tha)
-  plan: { 
-    type: String, 
-    enum: ['free', 'starter', 'pro', 'enterprise'], 
-    default: 'free' 
+  plan: {
+    type: String,
+    enum: ['free', 'starter', 'pro', 'enterprise'],
+    default: 'free'
   },
   billingCycle: { type: String, enum: ['monthly', 'yearly'] },
   status: { type: String, enum: ['active', 'cancelled', 'trial'], default: 'trial' },
@@ -56,6 +56,6 @@ const featureFlagSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 // Index
-featureFlagSchema.index({ tenant: 1 }, { unique: true });
+// tenant index already created by `unique: true` in field definition
 
 module.exports = mongoose.model('FeatureFlag', featureFlagSchema);

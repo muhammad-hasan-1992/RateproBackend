@@ -106,15 +106,17 @@ const userSchema = new mongoose.Schema({
     type: Boolean,
     default: false, // Default false to prevent over-permissioning
   },
-  // Link to SurveyStats (for users who take surveys)
+  // Link to SurveyStats (created lazily when user takes first survey)
   surveyStats: {
     type: mongoose.Schema.Types.ObjectId,
     // ref: "SurveyStats",
-    required: function () {
-      return this.role === "user";
-    },
     default: null,
   },
+  // Temporary: tracks plan intent from registration → survives email verification
+  pendingPlanCode: { type: String, default: null },
+  pendingBillingCycle: { type: String, default: null },
+  // Temporary: tracks pending checkout session for subscription onboarding idempotency
+  pendingCheckoutSessionId: { type: String, default: null },
   lastLogin: {
     type: Date,
     default: null,

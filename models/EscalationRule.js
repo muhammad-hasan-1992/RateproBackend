@@ -11,8 +11,7 @@ const EscalationRuleSchema = new mongoose.Schema({
     tenant: {
         type: mongoose.Schema.Types.ObjectId,
         ref: "Tenant",
-        required: true,
-        index: true
+        required: true
     },
 
     name: {

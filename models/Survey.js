@@ -78,7 +78,7 @@ const surveySchema = new mongoose.Schema(
       isPasswordProtected: { type: Boolean, default: false },
       password: { type: String },
     },
-    status: { type: String, enum: ["active", "inactive", "draft", "scheduled", "published", "closed"], default: "draft" }, // ← "scheduled" add kiya!
+    status: { type: String, enum: ["active", "inactive", "draft", "scheduled", "closed", "archived"], default: "draft" },
 
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
     // Responsible member assigned to manage this survey (null = creator is responsible)

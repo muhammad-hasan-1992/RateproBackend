@@ -10,6 +10,7 @@
 
 const mongoose = require("mongoose");
 const Survey = require("../../models/Survey");
+const { getAllowedActions } = require("../../utils/surveyStateMachine");
 
 /**
  * Convert a filter object for use in aggregation pipeline
@@ -180,10 +181,16 @@ exports.listSurveysService = async ({ query, user }) => {
       .lean();
   }
 
+  // Attach allowedActions per survey (backend-driven action visibility)
+  const surveysWithActions = surveys.map(s => ({
+    ...s,
+    allowedActions: getAllowedActions(s.status, s.totalResponses || 0),
+  }));
+
   return {
     total,
     page: Number(page),
     limit: Number(limit),
-    surveys,
+    surveys: surveysWithActions,
   };
 };

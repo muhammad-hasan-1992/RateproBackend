@@ -26,6 +26,10 @@ const {
     handleTapWebhook
 } = require('../controllers/subscription/webhookController');
 
+const {
+    onboardAndCheckout
+} = require('../controllers/subscription/onboardingController');
+
 // ============ PUBLIC ROUTES ============
 
 // Get all public plans for pricing page
@@ -40,12 +44,15 @@ router.get('/compare', comparePlans);
 router.post('/webhooks/stripe', express.raw({ type: 'application/json' }), handleStripeWebhook);
 router.post('/webhooks/tap', express.raw({ type: 'application/json' }), handleTapWebhook);
 
+// ============ PRE-TENANT ROUTES (before setTenantId — user may not have tenant yet) ============
+router.post('/onboard', protect, onboardAndCheckout);
+router.get('/current', protect, getCurrentSubscription);
+
 // ============ PROTECTED ROUTES ============
 
 router.use(protect, setTenantId);
 
-// Get current subscription
-router.get('/current', getCurrentSubscription);
+// (moved above setTenantId barrier)
 
 // Get usage report
 router.get('/usage', getUsageReport);

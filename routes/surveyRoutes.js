@@ -29,6 +29,8 @@ const updateSurvey = require("../controllers/survey/updateSurvey.controller");
 const deleteSurvey = require("../controllers/survey/deleteSurvey.controller");
 const activateSurvey = require("../controllers/survey/activateSurvey.controller");
 const deactivateSurvey = require("../controllers/survey/deactivateSurvey.controller");
+const closeSurvey = require("../controllers/survey/closeSurvey.controller");
+const archiveSurvey = require("../controllers/survey/archiveSurvey.controller");
 const { toggleSurveyStatus } = require("../controllers/survey/toggleStatus.controller");
 const { scheduleSurvey } = require("../controllers/survey/scheduleSurvey.controller");
 const setAudience = require("../controllers/survey/setAudience.controller");
@@ -216,6 +218,22 @@ router.put(
   allowRoles("companyAdmin"),
   allowPermission("survey:settings:update"),
   toggleSurveyStatus
+);
+
+// Close survey (active → closed, permanently stops collection)
+router.put(
+  "/:surveyId/close",
+  tenantCheck,
+  surveyPermission("survey:deactivate"),  // Tech debt: create survey:close permission
+  closeSurvey
+);
+
+// Archive survey (closed → archived, terminal read-only state)
+router.put(
+  "/:surveyId/archive",
+  tenantCheck,
+  surveyPermission("survey:delete"),  // Tech debt: create survey:archive permission
+  archiveSurvey
 );
 
 router.post(

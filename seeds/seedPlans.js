@@ -159,17 +159,99 @@ async function seedPlans() {
         await mongoose.connect(process.env.MONGO_URI);
         console.log('✅ Connected to MongoDB');
 
+        // Initialize Stripe (skip if no key configured)
+        let stripe = null;
+        if (process.env.STRIPE_SECRET_KEY) {
+            stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+            console.log('✅ Stripe initialized');
+        } else {
+            console.warn('⚠️ STRIPE_SECRET_KEY not set — skipping Stripe product/price creation');
+        }
+
         // Clear existing plans
         await PlanTemplate.deleteMany({});
         console.log('🗑️ Cleared existing plan templates');
 
-        // Insert new plans
-        const result = await PlanTemplate.insertMany(plans);
-        console.log(`✅ Seeded ${result.length} plan templates`);
+        // Process each plan individually (Stripe calls need to happen per plan)
+        const seededPlans = [];
 
+        for (const planData of plans) {
+            const isPaid = (planData.pricing.monthly > 0 || planData.pricing.yearly > 0);
+
+            // ─── Auto-create Stripe product + prices for paid plans ───
+            if (isPaid && stripe) {
+                try {
+                    // Dedup: search for existing Stripe product by planCode metadata
+                    let productId = null;
+                    try {
+                        const existing = await stripe.products.search({
+                            query: `metadata['planCode']:'${planData.code}'`
+                        });
+                        if (existing.data.length > 0) {
+                            productId = existing.data[0].id;
+                            console.log(`   ♻️ Reusing Stripe product: ${productId} (${planData.code})`);
+
+                            // Re-activate if archived
+                            if (!existing.data[0].active) {
+                                await stripe.products.update(productId, { active: true, name: planData.name });
+                            }
+                        }
+                    } catch (searchErr) {
+                        console.warn(`   ⚠️ Product search failed for ${planData.code}, creating new:`, searchErr.message);
+                    }
+
+                    // Create product if not found
+                    if (!productId) {
+                        const product = await stripe.products.create({
+                            name: planData.name,
+                            description: planData.description || `${planData.name} subscription plan`,
+                            metadata: { planCode: planData.code }
+                        });
+                        productId = product.id;
+                        console.log(`   ✅ Stripe product created: ${productId} (${planData.name})`);
+                    }
+
+                    planData.stripe = { productId };
+
+                    // Create monthly price
+                    if (planData.pricing.monthly > 0) {
+                        const monthlyPrice = await stripe.prices.create({
+                            product: productId,
+                            unit_amount: Math.round(planData.pricing.monthly * 100),
+                            currency: planData.pricing.currency.toLowerCase(),
+                            recurring: { interval: 'month' }
+                        });
+                        planData.stripe.monthlyPriceId = monthlyPrice.id;
+                        console.log(`   ✅ Monthly price: ${monthlyPrice.id} ($${planData.pricing.monthly}/mo)`);
+                    }
+
+                    // Create yearly price
+                    if (planData.pricing.yearly > 0) {
+                        const yearlyPrice = await stripe.prices.create({
+                            product: productId,
+                            unit_amount: Math.round(planData.pricing.yearly * 100),
+                            currency: planData.pricing.currency.toLowerCase(),
+                            recurring: { interval: 'year' }
+                        });
+                        planData.stripe.yearlyPriceId = yearlyPrice.id;
+                        console.log(`   ✅ Yearly price: ${yearlyPrice.id} ($${planData.pricing.yearly}/yr)`);
+                    }
+                } catch (stripeErr) {
+                    console.error(`   ❌ Stripe failed for "${planData.code}":`, stripeErr.message);
+                    console.warn(`   ⚠️ Plan "${planData.code}" will be saved WITHOUT Stripe IDs`);
+                }
+            }
+
+            // Save to MongoDB
+            const plan = await PlanTemplate.create(planData);
+            seededPlans.push(plan);
+        }
+
+        console.log(`\n✅ Seeded ${seededPlans.length} plan templates`);
         console.log('\n📋 Plans created:');
-        result.forEach(plan => {
-            console.log(`   ${plan.code}: $${plan.pricing.monthly}/mo (${plan.features.length} features)`);
+        seededPlans.forEach(plan => {
+            const stripeStatus = plan.stripe?.productId ? `stripe:${plan.stripe.productId}` : 'no stripe';
+            console.log(`   ${plan.code}: $${plan.pricing.monthly}/mo (${plan.features.length} features) [${stripeStatus}]`);
         });
 
         process.exit(0);

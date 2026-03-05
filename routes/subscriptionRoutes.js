@@ -18,7 +18,8 @@ const {
     cancelSubscription,
     getBillingPortal,
     getUsageReport,
-    comparePlans
+    comparePlans,
+    verifyCheckoutSession
 } = require('../controllers/subscription/subscriptionController');
 
 const {
@@ -47,6 +48,7 @@ router.post('/webhooks/tap', express.raw({ type: 'application/json' }), handleTa
 // ============ PRE-TENANT ROUTES (before setTenantId — user may not have tenant yet) ============
 router.post('/onboard', protect, onboardAndCheckout);
 router.get('/current', protect, getCurrentSubscription);
+router.post('/verify-session', protect, verifyCheckoutSession);
 
 // ============ PROTECTED ROUTES ============
 

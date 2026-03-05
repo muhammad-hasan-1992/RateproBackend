@@ -568,7 +568,6 @@ exports.resendOtp = async (req, res, next) => {
 // };
 
 exports.loginUser = async (req, res, next) => {
-
     // Redact password from logs
     const safeBodyForLog = { ...req.body };
     if (safeBodyForLog.password) safeBodyForLog.password = "[REDACTED]";
@@ -724,12 +723,12 @@ exports.loginUser = async (req, res, next) => {
 
         res.cookie("accessToken", accessToken, {
             ...cookieConfig,
-            maxAge: 24 * 60 * 60 * 1000,
+            maxAge: 15 * 60 * 1000,
         });
 
         res.cookie("refreshToken", refreshToken, {
             ...cookieConfig,
-            maxAge: 7 * 24 * 60 * 60 * 1000,
+            maxAge: 30 * 24 * 60 * 60 * 1000,
         });
 
         // Update last login
@@ -1199,17 +1198,29 @@ exports.refreshAccessToken = async (req, res) => {
 
         // Verify refresh token
         const decoded = jwt.verify(refreshToken, process.env.REFRESH_TOKEN_SECRET);
-        const user = await User.findById(decoded.id);
+        const user = await User.findById(decoded._id || decoded.id)
+            .populate('customRoles');
 
         if (!user)
             return res.status(401).json({ message: "User not found" });
 
-        // Generate new access token
-        const accessToken = jwt.sign(
-            { id: user._id, email: user.email, role: user.role },
-            JWT_SECRET,
-            { expiresIn: "15m" }
-        );
+        // Generate new access token using the same helper as loginUser
+        const accessToken = generateToken({
+            _id: user._id.toString(),
+            role: user.role,
+            tenant: user.tenant?.toString?.(),
+            customRoles: (user.customRoles || []).map(r => r._id ? r._id.toString() : r.toString())
+        }, "access");
+
+        // ✅ Set new accessToken cookie (same config as loginUser)
+        const isProd = process.env.NODE_ENV === "production";
+        res.cookie("accessToken", accessToken, {
+            httpOnly: true,
+            secure: isProd,
+            sameSite: isProd ? "none" : "lax",
+            path: "/",
+            maxAge: 15 * 60 * 1000,
+        });
 
         const responseData = {
             accessToken,
@@ -1221,15 +1232,6 @@ exports.refreshAccessToken = async (req, res) => {
             },
         };
 
-        // ✅ Log success
-        // Logger.info('refreshAccessToken', 'Access token refreshed successfully', {
-        //     context: {
-        //         userId: user._id,
-        //         email: user.email
-        //     }
-        //     // req nahi hai yahan, to nahi daal rahe
-        // });
-
         return res.status(200).json(responseData);
     } catch (err) {
         console.error("refreshAccessToken error:", err);
@@ -1237,7 +1239,6 @@ exports.refreshAccessToken = async (req, res) => {
         // ❌ Log error
         Logger.error('refreshAccessToken', 'Error refreshing access token', {
             error: err
-            // req ya user context nahi hai yahan, to sirf error
         });
 
         return res.status(401).json({ message: "Invalid refresh token" });

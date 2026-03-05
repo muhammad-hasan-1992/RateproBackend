@@ -6,6 +6,8 @@ const featureFlagManager = require('../../services/subscription/featureFlagManag
 const usageLimitsService = require('../../services/subscription/usageLimitsService');
 const PlanTemplate = require('../../models/PlanTemplate');
 const TenantSubscription = require('../../models/TenantSubscription');
+const Stripe = require('stripe');
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
 /**
  * @desc Get all public plans for pricing page
@@ -329,6 +331,91 @@ exports.comparePlans = async (req, res) => {
         res.status(500).json({
             success: false,
             message: error.message || 'Failed to compare plans'
+        });
+    }
+};
+
+/**
+ * @desc Verify a checkout session and trigger provisioning if webhook hasn't fired
+ * @route POST /api/subscriptions/verify-session
+ * @access Private (any authenticated user)
+ */
+exports.verifyCheckoutSession = async (req, res) => {
+    try {
+        const { sessionId } = req.body;
+        const userId = req.user._id.toString();
+
+        if (!sessionId) {
+            return res.status(400).json({
+                success: false,
+                message: 'sessionId is required'
+            });
+        }
+
+        console.log(`[verify-session] User ${userId} verifying session: ${sessionId}`);
+
+        // 1. Retrieve session from Stripe
+        const session = await stripe.checkout.sessions.retrieve(sessionId);
+
+        // 2. Security: verify session belongs to this user
+        const sessionUserId = session.metadata?.userId || session.client_reference_id;
+        if (sessionUserId !== userId) {
+            console.warn(`[verify-session] ❌ userId mismatch: session=${sessionUserId}, req=${userId}`);
+            return res.status(403).json({
+                success: false,
+                message: 'Session does not belong to this user'
+            });
+        }
+
+        // 3. Check if already provisioned (user already has tenant with active sub)
+        if (req.user.tenant) {
+            const existingSub = await TenantSubscription.findOne({ tenant: req.user.tenant });
+            if (existingSub && existingSub.billing.status === 'active') {
+                console.log(`[verify-session] ✅ Already provisioned for user ${userId}`);
+                return res.status(200).json({
+                    success: true,
+                    provisioned: true,
+                    message: 'Subscription already active'
+                });
+            }
+        }
+
+        // 4. Check payment status
+        if (session.payment_status !== 'paid') {
+            console.log(`[verify-session] ⏳ Payment not yet completed: ${session.payment_status}`);
+            return res.status(200).json({
+                success: true,
+                provisioned: false,
+                paymentStatus: session.payment_status,
+                message: 'Payment not yet confirmed'
+            });
+        }
+
+        // 5. Payment is confirmed but webhook hasn't provisioned yet — trigger provisioning
+        console.log(`[verify-session] 🔄 Payment confirmed, triggering provisioning for user ${userId}`);
+
+        const eventData = {
+            id: session.id,
+            customer: session.customer,
+            subscription: session.subscription,
+            metadata: session.metadata
+        };
+
+        await subscriptionManager._handleCheckoutCompleted(eventData, null);
+
+        console.log(`[verify-session] ✅ Provisioning complete for user ${userId}`);
+
+        return res.status(200).json({
+            success: true,
+            provisioned: true,
+            message: 'Subscription provisioned successfully'
+        });
+
+    } catch (error) {
+        console.error('[verify-session] ❌ Error:', error.message);
+        res.status(500).json({
+            success: false,
+            message: error.message || 'Failed to verify session'
         });
     }
 };

@@ -29,7 +29,7 @@ const generateToken = (payload, type = "access") => {
 
   const expiresIn =
     type === "access"
-      ? process.env.JWT_EXPIRE || "30m"
+      ? process.env.JWT_EXPIRE || "15m"
       : "30d";
 
   // console.log("Generating token with:", { payload, type, secret, expiresIn });

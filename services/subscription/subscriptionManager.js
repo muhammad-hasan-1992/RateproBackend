@@ -491,7 +491,8 @@ class SubscriptionManager {
             const tenantDocs = await Tenant.create([{
                 admin: user._id,
                 name: `${user.name}'s Organization`,
-                contactEmail: user.email
+                contactEmail: user.email,
+                plan: plan._id
             }], { session });
             const tenant = tenantDocs[0];
 
@@ -530,7 +531,39 @@ class SubscriptionManager {
 
             console.log(`✅ Webhook provisioned: user=${userId} → tenant=${tenant._id} → plan=${planCode}`);
 
-            // 5. Log activation
+            // 5. Send subscription confirmation email with admin dashboard link
+            try {
+                const sendEmail = require('../../utils/sendEmail');
+                const getBaseURL = require('../../utils/getBaseURL');
+                const adminUrl = getBaseURL().admin;
+
+                await sendEmail({
+                    to: user.email,
+                    subject: 'Your workspace is ready! 🎉',
+                    html: `
+                        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+                            <h2 style="color: #333;">Welcome to RatePro, ${user.name}!</h2>
+                            <p>Your subscription to the <strong>${plan.name || planCode}</strong> plan has been successfully activated.</p>
+                            <p>Your workspace is ready. Log in to your admin dashboard to set up your organization:</p>
+                            <div style="text-align: center; margin: 30px 0;">
+                                <a href="${adminUrl}/login" 
+                                   style="background: linear-gradient(135deg, #667eea, #764ba2); color: white; padding: 14px 32px; text-decoration: none; border-radius: 8px; font-size: 16px; font-weight: bold;">
+                                    Access Your Dashboard
+                                </a>
+                            </div>
+                            <p style="color: #666; font-size: 14px;">Or copy this link: <a href="${adminUrl}/login">${adminUrl}/login</a></p>
+                            <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;" />
+                            <p style="color: #999; font-size: 12px;">If you did not make this purchase, please contact our support team.</p>
+                        </div>
+                    `
+                });
+                console.log(`📧 Confirmation email sent to ${user.email}`);
+            } catch (emailError) {
+                console.error('⚠️ Failed to send confirmation email:', emailError.message);
+                // Non-critical — don't fail provisioning for email errors
+            }
+
+            // 6. Log activation
             await this._logSubscriptionAction(tenant._id, 'SUBSCRIPTION_ACTIVATED_VIA_WEBHOOK', {
                 planCode,
                 billingCycle,

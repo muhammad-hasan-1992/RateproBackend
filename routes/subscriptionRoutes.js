@@ -9,6 +9,7 @@ const { setTenantId } = require('../middlewares/tenantMiddleware');
 
 // Controllers
 const {
+    getSubscriptionStatus,
     getPublicPlans,
     getCurrentSubscription,
     subscribeToPlan,
@@ -38,6 +39,9 @@ router.get('/plans', getPublicPlans);
 
 // Compare two plans
 router.get('/compare', comparePlans);
+
+// Check provisioning status via session_id (for public checkout-success page)
+router.get('/status', getSubscriptionStatus);
 
 // ============ WEBHOOK ROUTES (Raw body needed for signature verification) ============
 // Note: These endpoints need raw body, configure in server.js

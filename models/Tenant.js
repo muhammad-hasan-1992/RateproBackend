@@ -92,9 +92,10 @@ const tenantSchema = new mongoose.Schema({
   ],
   plan: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'Plan',
+    ref: 'PlanTemplate',
     default: null
   },
+  industry: { type: String, default: null },
 
   features: {
     type: Object,

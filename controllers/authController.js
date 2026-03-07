@@ -8,10 +8,10 @@ const sendEmail = require("../utils/sendEmail");
 const generateToken = require("../utils/generateToken");
 const cloudinary = require("../utils/cloudinary");
 const moment = require("moment");
-const getBaseURL = require("../utils/getBaseURL");
 const Logger = require("../utils/logger");
 const { validatePasswordComplexity, PASSWORD_RULES } = require("../utils/passwordValidator");
 const EmailTemplate = require("../models/EmailTemplate");
+const getBaseURL = require("../utils/getBaseURL");
 
 // Helper: Generate OTP Code
 const generateOTP = () => Math.floor(100000 + Math.random() * 900000).toString();
@@ -96,6 +96,7 @@ exports.registerUser = async (req, res, next) => {
         }
 
         const { name, email, password, planCode, billingCycle } = req.body;
+        console.log(`[registerUser] Registration attempt: email=${email}, planCode=${planCode || 'none'}, billingCycle=${billingCycle || 'none'}`);
 
         const userExists = await User.findOne({ email });
         if (userExists) {
@@ -250,7 +251,7 @@ exports.verifyEmailLink = async (req, res, next) => {
         //     },
         //     req
         // });
-        // Redirect based on plan intent
+        // Redirect based on plan intent — always use public URL for subscription users
         if (user.pendingPlanCode) {
             const planCode = user.pendingPlanCode;
             const billing = user.pendingBillingCycle || 'monthly';
@@ -258,7 +259,8 @@ exports.verifyEmailLink = async (req, res, next) => {
             user.pendingPlanCode = null;
             user.pendingBillingCycle = null;
             await user.save();
-            return res.redirect(`${baseURL}/auth-gateway?plan=${planCode}&billing=${billing}&verified=true`);
+            const publicUrl = getBaseURL().public;
+            return res.redirect(`${publicUrl}/auth-gateway?plan=${planCode}&billing=${billing}&verified=true`);
         }
         return res.redirect(`${baseURL}/app`);
     } catch (err) {
@@ -311,16 +313,28 @@ exports.verifyEmail = async (req, res, next) => {
             return res.status(400).json({ message: "OTP expired. Request a new one." });
         }
 
-        await User.findOneAndUpdate({ email }, { isVerified: true });
+        const user = await User.findOneAndUpdate({ email }, { isVerified: true }, { new: true });
         await OTP.deleteMany({ email, purpose: "verify" });
 
-        // Logger.info('verifyEmail', 'Email verified successfully', {
-        //     context: {
-        //         email
-        //     },
-        //     req
-        // });
-        res.status(200).json({ message: "Email verified successfully" });
+        // Return pending plan info so frontend can redirect to auth-gateway with plan context
+        const planCode = user?.pendingPlanCode || null;
+        const billingCycle = user?.pendingBillingCycle || null;
+
+        console.log(`[verifyEmail] Email verified: ${email}, pendingPlanCode: ${planCode}, pendingBillingCycle: ${billingCycle}`);
+
+        // Clear plan intent after reading (so it's not used again)
+        if (planCode) {
+            user.pendingPlanCode = null;
+            user.pendingBillingCycle = null;
+            await user.save();
+            console.log(`[verifyEmail] Cleared plan intent for ${email}`);
+        }
+
+        res.status(200).json({
+            message: "Email verified successfully",
+            pendingPlanCode: planCode,
+            pendingBillingCycle: billingCycle
+        });
     } catch (err) {
         console.error("Verify email error:", err);
         Logger.error('verifyEmail', 'Server error', {
@@ -685,6 +699,17 @@ exports.loginUser = async (req, res, next) => {
             });
             return res.status(401).json({
                 message: "Email not verified. A verification link has been sent to your email.",
+            });
+        }
+
+        // ─── CompanyAdmin restriction: block login from public site ───
+        const { source } = req.body;
+        if (source === 'public' && user.role === 'companyAdmin') {
+            const adminUrl = getBaseURL().admin;
+            return res.status(403).json({
+                message: 'Your workspace account must be accessed from the admin portal.',
+                redirectUrl: `${adminUrl}/login`,
+                code: 'COMPANY_ADMIN_REDIRECT'
             });
         }
 

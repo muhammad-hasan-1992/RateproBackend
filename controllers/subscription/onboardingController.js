@@ -9,6 +9,7 @@ const User = require('../../models/User');
 const mongoose = require('mongoose');
 const subscriptionManager = require('../../services/subscription/subscriptionManager');
 const featureFlagManager = require('../../services/subscription/featureFlagManager');
+const getBaseURL = require('../../utils/getBaseURL');
 
 /**
  * @desc Onboard a user to a plan — creates Stripe checkout (or provisions free plan)
@@ -207,15 +208,15 @@ async function _handlePaidPlan(req, res, user, plan, billingCycle) {
         metadata: { userId: user._id.toString() }
     });
 
-    const adminUrl = process.env.ADMIN_URL_LOCAL || process.env.ADMIN_URL_PROD || 'http://localhost:5174';
+    const publicUrl = getBaseURL().public;
 
     // Create Checkout Session with metadata for webhook provisioning
     const sessionResult = await gateway.createCheckoutSession(
         customerResult.customerId,
         priceId,
         {
-            successUrl: `${adminUrl}/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
-            cancelUrl: `${adminUrl}/checkout/cancel`,
+            successUrl: `${publicUrl}/checkout-success?session_id={CHECKOUT_SESSION_ID}`,
+            cancelUrl: `${publicUrl}/pricing`,
             trialDays: plan.trial?.enabled ? plan.trial.days : 0,
             metadata: {
                 userId: user._id.toString(),

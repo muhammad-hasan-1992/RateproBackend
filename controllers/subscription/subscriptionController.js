@@ -6,8 +6,119 @@ const featureFlagManager = require('../../services/subscription/featureFlagManag
 const usageLimitsService = require('../../services/subscription/usageLimitsService');
 const PlanTemplate = require('../../models/PlanTemplate');
 const TenantSubscription = require('../../models/TenantSubscription');
+const User = require('../../models/User');
+const getBaseURL = require('../../utils/getBaseURL');
 const Stripe = require('stripe');
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+
+/**
+ * @desc Check subscription provisioning status via Stripe session ID
+ * @route GET /api/subscriptions/status?session_id=XYZ
+ * @access Public (no auth — used by public checkout-success page)
+ */
+exports.getSubscriptionStatus = async (req, res) => {
+    try {
+        const { session_id } = req.query;
+
+        if (!session_id) {
+            return res.status(400).json({
+                success: false,
+                message: 'session_id is required'
+            });
+        }
+
+        // Retrieve session from Stripe to get userId from metadata
+        let session;
+        try {
+            session = await stripe.checkout.sessions.retrieve(session_id);
+        } catch (stripeErr) {
+            console.error('[status] Stripe session retrieve failed:', stripeErr.message);
+            return res.status(404).json({
+                success: false,
+                message: 'Invalid or expired session'
+            });
+        }
+
+        const userId = session.metadata?.userId;
+        if (!userId) {
+            return res.status(400).json({
+                success: false,
+                message: 'Session missing user metadata'
+            });
+        }
+
+        console.log(`[status] Checking provisioning: userId=${userId}, payment_status=${session.payment_status}`);
+
+        const user = await User.findById(userId).select('tenant role pendingCheckoutSessionId');
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: 'User not found'
+            });
+        }
+
+        // Check if provisioning is complete
+        if (user.tenant && user.role === 'companyAdmin') {
+            const sub = await TenantSubscription.findOne({ tenant: user.tenant });
+            if (sub && sub.billing.status === 'active') {
+                const adminUrl = getBaseURL().admin;
+                console.log(`[status] ✅ Already provisioned: userId=${userId}, tenant=${user.tenant}`);
+                return res.status(200).json({
+                    success: true,
+                    provisioned: true,
+                    adminUrl: `${adminUrl}/login`,
+                    message: 'Your workspace is ready!'
+                });
+            }
+        }
+
+        // Payment confirmed but webhook hasn't provisioned yet — trigger fallback provisioning
+        if (session.payment_status === 'paid') {
+            console.log(`[status] ⚡ Payment confirmed but not provisioned. Triggering fallback provisioning for userId=${userId}`);
+            try {
+                const eventData = {
+                    id: session.id,
+                    customer: session.customer,
+                    subscription: session.subscription,
+                    metadata: session.metadata
+                };
+
+                await subscriptionManager._handleCheckoutCompleted(eventData, null);
+
+                // Re-check after provisioning
+                const freshUser = await User.findById(userId).select('tenant role');
+                if (freshUser?.tenant && freshUser?.role === 'companyAdmin') {
+                    const adminUrl = getBaseURL().admin;
+                    console.log(`[status] ✅ Fallback provisioning successful: userId=${userId}`);
+                    return res.status(200).json({
+                        success: true,
+                        provisioned: true,
+                        adminUrl: `${adminUrl}/login`,
+                        message: 'Your workspace is ready!'
+                    });
+                }
+            } catch (provisionError) {
+                console.error('[status] ⚠️ Fallback provisioning failed:', provisionError.message);
+                // Don't fail the response — just report not provisioned yet
+            }
+        }
+
+        // Not yet provisioned
+        return res.status(200).json({
+            success: true,
+            provisioned: false,
+            paymentStatus: session.payment_status,
+            message: 'Provisioning in progress...'
+        });
+
+    } catch (error) {
+        console.error('❌ getSubscriptionStatus error:', error.message);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to check status'
+        });
+    }
+};
 
 /**
  * @desc Get all public plans for pricing page

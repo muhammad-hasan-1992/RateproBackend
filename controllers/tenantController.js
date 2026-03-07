@@ -116,7 +116,7 @@ const Logger = require("../utils/logger");
 exports.updateTenant = async (req, res, next) => {
   try {
     const { tenantId } = req.params;
-    const { name, address, contactEmail, contactPhone, website, totalEmployees, departments } = req.body;
+    const { name, address, contactEmail, contactPhone, website, totalEmployees, departments, industry } = req.body;
 
     // Validate inputs
     if (!name) {
@@ -229,6 +229,7 @@ exports.updateTenant = async (req, res, next) => {
         contactEmail,
         contactPhone,
         website,
+        industry: industry || undefined,
         totalEmployees: totalEmployees || 0,
         departments: departmentDocs,
       },

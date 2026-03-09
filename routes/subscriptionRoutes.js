@@ -12,9 +12,11 @@ const {
     getSubscriptionStatus,
     getPublicPlans,
     getCurrentSubscription,
+    getMyPlan,
     subscribeToPlan,
     createCheckoutSession,
     upgradePlan,
+    previewUpgrade,
     downgradePlan,
     cancelSubscription,
     getBillingPortal,
@@ -69,8 +71,14 @@ router.post('/subscribe', allowRoles('companyAdmin', 'admin'), subscribeToPlan);
 // Create checkout session for paid subscription
 router.post('/checkout', allowRoles('companyAdmin', 'admin'), createCheckoutSession);
 
+// Get My Plan (complete plan data in one call)
+router.get('/my-plan', allowRoles('companyAdmin'), getMyPlan);
+
 // Upgrade plan
 router.post('/upgrade', allowRoles('companyAdmin', 'admin'), upgradePlan);
+
+// Preview upgrade proration
+router.post('/upgrade-preview', allowRoles('companyAdmin', 'admin'), previewUpgrade);
 
 // Downgrade plan
 router.post('/downgrade', allowRoles('companyAdmin', 'admin'), downgradePlan);

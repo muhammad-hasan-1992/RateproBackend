@@ -200,7 +200,135 @@ exports.getCurrentSubscription = async (req, res) => {
 };
 
 /**
- * @desc Subscribe to a plan (for manual/free plans without payment)
+ * @desc Get complete "My Plan" data — current plan, billing, upgrades, usage in one call
+ * @route GET /api/subscriptions/my-plan
+ * @access Private (Company Admin)
+ */
+exports.getMyPlan = async (req, res) => {
+    try {
+        const tenantId = req.user.tenant;
+
+        if (!tenantId) {
+            return res.status(200).json({
+                success: true,
+                data: null,
+                message: 'No tenant provisioned yet'
+            });
+        }
+
+        // Fetch subscription with populated plan template
+        const subscription = await TenantSubscription.findOne({ tenant: tenantId })
+            .populate('planTemplate');
+
+        if (!subscription) {
+            return res.status(200).json({
+                success: true,
+                data: null,
+                message: 'No subscription found'
+            });
+        }
+
+        // Get current plan details
+        const currentPlan = subscription.planTemplate;
+
+        // Get all active plans for upgrade comparison (sorted by displayOrder)
+        const allPlans = await PlanTemplate.find({ isActive: true })
+            .sort({ displayOrder: 1 })
+            .select('-stripe -tap -createdBy');
+
+        // Determine current plan index for upgrade/downgrade detection
+        const currentPlanIndex = allPlans.findIndex(p => p.code === subscription.planCode);
+
+        // Build available upgrade plans (only higher-tier)
+        const upgradePlans = allPlans
+            .filter((p, idx) => idx > currentPlanIndex && p.isPublic)
+            .map(p => ({
+                _id: p._id,
+                code: p.code,
+                name: p.name,
+                description: p.description,
+                pricing: p.pricing,
+                badge: p.badge,
+                features: p.features
+            }));
+
+        // Get feature definitions for display
+        const featureDefinitions = await featureFlagManager.getAllFeatureDefinitions();
+        const featureMap = {};
+        featureDefinitions.forEach(f => {
+            featureMap[f.code] = {
+                name: f.name,
+                description: f.description || null,
+                category: f.category,
+                type: f.type,
+                unit: f.unit,
+                isPublic: f.isPublic !== false,
+                displayOrder: f.displayOrder || 0
+            };
+        });
+
+        // Usage report
+        const usageReport = await usageLimitsService.getUsageReport(tenantId);
+
+        res.status(200).json({
+            success: true,
+            data: {
+                // Current plan info
+                currentPlan: currentPlan ? {
+                    code: currentPlan.code,
+                    name: currentPlan.name,
+                    description: currentPlan.description,
+                    pricing: currentPlan.pricing
+                } : { code: subscription.planCode, name: subscription.planCode, pricing: { monthly: 0, yearly: 0, currency: 'USD' } },
+
+                // Billing details
+                billing: {
+                    ...subscription.billing.toObject(),
+                    nextBillingDate: subscription.billing.currentPeriodEnd || null
+                },
+
+                // Payment info (no sensitive data)
+                payment: {
+                    gateway: subscription.payment.gateway,
+                    hasPaymentMethod: !!subscription.payment.paymentMethodId,
+                    hasSubscription: !!subscription.payment.subscriptionId
+                },
+
+                // Features currently assigned
+                features: subscription.features,
+
+                // Available upgrades
+                upgradePlans,
+
+                // All plans for full grid display
+                allPlans: allPlans.map(p => ({
+                    _id: p._id,
+                    code: p.code,
+                    name: p.name,
+                    description: p.description,
+                    pricing: p.pricing,
+                    badge: p.badge,
+                    features: p.features,
+                    isPublic: p.isPublic
+                })),
+
+                // Feature definitions map
+                featureDefinitions: featureMap,
+
+                // Usage
+                usage: usageReport.limits || {}
+            }
+        });
+    } catch (error) {
+        console.error('❌ getMyPlan error:', error.message);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to fetch plan details'
+        });
+    }
+};
+
+/**
  * @route POST /api/subscriptions/subscribe
  * @access Private (Company Admin)
  */
@@ -274,11 +402,109 @@ exports.createCheckoutSession = async (req, res) => {
 };
 
 /**
- * @desc Upgrade to a higher plan
+ * @desc Upgrade to a higher plan (with tier validation, duplicate guard, free→paid checkout routing)
  * @route POST /api/subscriptions/upgrade
  * @access Private (Company Admin)
  */
 exports.upgradePlan = async (req, res) => {
+    try {
+        const { planCode, billingCycle } = req.body;
+        const tenantId = req.user.tenant;
+
+        if (!planCode) {
+            return res.status(400).json({
+                success: false,
+                message: 'Plan code is required'
+            });
+        }
+
+        // 1. Fetch current subscription
+        const subscription = await TenantSubscription.findOne({ tenant: tenantId });
+        if (!subscription) {
+            return res.status(404).json({
+                success: false,
+                message: 'No subscription found for this tenant'
+            });
+        }
+
+        // 2. Duplicate-upgrade guard — reject if billing status isn't stable
+        if (!['active', 'trialing'].includes(subscription.billing.status) && subscription.planCode !== 'free') {
+            return res.status(409).json({
+                success: false,
+                message: `Cannot upgrade while subscription is in "${subscription.billing.status}" state. Please wait for the current operation to complete.`
+            });
+        }
+
+        // 3. Plan-tier validation — ensure target plan is higher
+        const allPlans = await PlanTemplate.find({ isActive: true }).sort({ displayOrder: 1 });
+        const currentIndex = allPlans.findIndex(p => p.code === subscription.planCode);
+        const targetIndex = allPlans.findIndex(p => p.code === planCode);
+
+        if (targetIndex < 0) {
+            return res.status(404).json({
+                success: false,
+                message: `Plan "${planCode}" not found`
+            });
+        }
+
+        if (targetIndex <= currentIndex) {
+            return res.status(400).json({
+                success: false,
+                message: `Cannot upgrade to "${planCode}" — it is the same or a lower tier than your current plan. Use the downgrade endpoint instead.`
+            });
+        }
+
+        // 4. Check if this is a free→paid upgrade (no Stripe subscription yet)
+        const targetPlan = allPlans[targetIndex];
+        const isPaidPlan = (targetPlan.pricing?.monthly > 0 || targetPlan.pricing?.yearly > 0);
+        const hasStripeSubscription = !!subscription.payment.subscriptionId;
+
+        if (isPaidPlan && !hasStripeSubscription) {
+            // Route to Stripe Checkout — user needs to provide payment method
+            console.log(`[upgrade] Free→Paid upgrade: routing to checkout for plan "${planCode}"`);
+            const cycle = billingCycle || subscription.billing.cycle || 'monthly';
+            const result = await subscriptionManager.createCheckoutSession(tenantId, planCode, {
+                billingCycle: cycle,
+                successUrl: `${process.env.FRONTEND_URL}/app/subscription/my-plan?upgraded=true`,
+                cancelUrl: `${process.env.FRONTEND_URL}/app/subscription/my-plan?cancelled=true`
+            });
+
+            return res.status(200).json({
+                success: true,
+                action: 'checkout',
+                message: 'Payment required — redirecting to checkout',
+                data: {
+                    sessionId: result.sessionId,
+                    url: result.url
+                }
+            });
+        }
+
+        // 5. In-place upgrade (already has Stripe subscription) — uses proration
+        console.log(`[upgrade] In-place Stripe upgrade: ${subscription.planCode} → ${planCode}`);
+        const result = await subscriptionManager.upgradePlan(tenantId, planCode);
+
+        res.status(200).json({
+            success: true,
+            action: 'upgraded',
+            message: `Successfully upgraded to ${planCode}`,
+            data: result
+        });
+    } catch (error) {
+        console.error('❌ upgradePlan error:', error.message);
+        res.status(500).json({
+            success: false,
+            message: error.message || 'Failed to upgrade plan'
+        });
+    }
+};
+
+/**
+ * @desc Preview upgrade proration — shows credit/charge breakdown before confirming
+ * @route POST /api/subscriptions/upgrade-preview
+ * @access Private (Company Admin)
+ */
+exports.previewUpgrade = async (req, res) => {
     try {
         const { planCode } = req.body;
         const tenantId = req.user.tenant;
@@ -290,18 +516,112 @@ exports.upgradePlan = async (req, res) => {
             });
         }
 
-        const result = await subscriptionManager.upgradePlan(tenantId, planCode);
+        // Fetch subscription
+        const subscription = await TenantSubscription.findOne({ tenant: tenantId });
+        if (!subscription) {
+            return res.status(404).json({
+                success: false,
+                message: 'Subscription not found'
+            });
+        }
+
+        // Get target plan
+        const targetPlan = await PlanTemplate.getByCode(planCode);
+        if (!targetPlan) {
+            return res.status(404).json({
+                success: false,
+                message: `Plan "${planCode}" not found`
+            });
+        }
+
+        // Get current plan name
+        const currentPlan = await PlanTemplate.findById(subscription.planTemplate);
+
+        // If no Stripe subscription, return simple price comparison (free→paid)
+        if (!subscription.payment.subscriptionId || !subscription.payment.customerId) {
+            const cycle = subscription.billing.cycle || 'monthly';
+            const newPrice = cycle === 'yearly' ? targetPlan.pricing.yearly : targetPlan.pricing.monthly;
+
+            return res.status(200).json({
+                success: true,
+                data: {
+                    currentPlan: currentPlan?.name || subscription.planCode,
+                    newPlan: targetPlan.name,
+                    billingCycle: cycle,
+                    credit: 0,
+                    charge: newPrice,
+                    total: newPrice,
+                    currency: targetPlan.pricing.currency || 'USD',
+                    isNewSubscription: true,
+                    message: `You will be charged $${newPrice}/${cycle === 'yearly' ? 'year' : 'month'} for the ${targetPlan.name} plan.`
+                }
+            });
+        }
+
+        // Use Stripe's retrieveUpcoming to get exact proration
+        const cycle = subscription.billing.cycle || 'monthly';
+        const newPriceId = cycle === 'yearly'
+            ? targetPlan.stripe?.yearlyPriceId
+            : targetPlan.stripe?.monthlyPriceId;
+
+        if (!newPriceId) {
+            return res.status(400).json({
+                success: false,
+                message: 'Target plan does not have pricing configured for this billing cycle'
+            });
+        }
+
+        // Retrieve the current Stripe subscription to get the item ID
+        const stripeSub = await stripe.subscriptions.retrieve(subscription.payment.subscriptionId);
+        const currentItemId = stripeSub.items.data[0]?.id;
+
+        // Get upcoming invoice preview with the plan change (Stripe v20+ uses createPreview)
+        const upcomingInvoice = await stripe.invoices.createPreview({
+            customer: subscription.payment.customerId,
+            subscription: subscription.payment.subscriptionId,
+            subscription_details: {
+                items: [{
+                    id: currentItemId,
+                    price: newPriceId
+                }],
+                proration_behavior: 'create_prorations'
+            }
+        });
+
+        // Calculate credit and charge from invoice line items
+        let credit = 0;
+        let charge = 0;
+        for (const line of upcomingInvoice.lines.data) {
+            if (line.amount < 0) {
+                credit += Math.abs(line.amount);
+            } else {
+                charge += line.amount;
+            }
+        }
+
+        // Stripe amounts are in cents
+        const currency = upcomingInvoice.currency?.toUpperCase() || 'USD';
 
         res.status(200).json({
             success: true,
-            message: `Successfully upgraded to ${planCode}`,
-            data: result
+            data: {
+                currentPlan: currentPlan?.name || subscription.planCode,
+                newPlan: targetPlan.name,
+                billingCycle: cycle,
+                credit: credit / 100,
+                charge: charge / 100,
+                total: upcomingInvoice.amount_due / 100,
+                currency,
+                isNewSubscription: false,
+                periodEnd: new Date(stripeSub.current_period_end * 1000),
+                message: `You'll receive $${(credit / 100).toFixed(2)} credit for unused time on ${currentPlan?.name || subscription.planCode}. The prorated charge for ${targetPlan.name} is $${(upcomingInvoice.amount_due / 100).toFixed(2)}.`
+            }
         });
     } catch (error) {
-        console.error('❌ upgradePlan error:', error.message);
+        console.error('❌ previewUpgrade error:', error.message);
         res.status(500).json({
             success: false,
-            message: error.message || 'Failed to upgrade plan'
+            message: error.message || 'Failed to preview upgrade'
         });
     }
 };

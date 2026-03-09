@@ -239,8 +239,8 @@ exports.verifyEmailLink = async (req, res, next) => {
 
         const baseURL = ['admin', 'companyAdmin'].includes(user.role) ? process.env.FRONTEND_URL : process.env.RATEPRO_URL;
 
-        const accessToken = generateToken({ id: user._id, role: user.role, tenant: user.tenant, customRoles: user.customRoles }, "access");
-        const refreshToken = generateToken({ id: user._id, role: user.role, tenant: user.tenant, customRoles: user.customRoles }, "refresh");
+        const accessToken = generateToken({ _id: user._id.toString(), role: user.role, tenant: user.tenant?.toString?.() || user.tenant, customRoles: (user.customRoles || []).map(r => r._id?.toString?.() || r.toString()) }, "access");
+        const refreshToken = generateToken({ _id: user._id.toString(), role: user.role }, "refresh");
 
         res.cookie("refreshToken", refreshToken, { httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: process.env.NODE_ENV === "production" ? "None" : "Lax", maxAge: 7 * 24 * 60 * 60 * 1000 });
         res.cookie("accessToken", accessToken, { httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: process.env.NODE_ENV === "production" ? "None" : "Lax", maxAge: 1 * 60 * 60 * 1000 });

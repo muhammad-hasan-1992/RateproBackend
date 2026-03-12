@@ -16,5 +16,8 @@ exports.submitResponseSchema = Joi.object({
   review: Joi.string().allow("", null),
   rating: Joi.number().min(1).max(5).optional(),
   score: Joi.number().min(0).max(100).optional(),
-  isAnonymous: Joi.boolean().default(false)
+  isAnonymous: Joi.boolean().default(false),
+  startedAt: Joi.date().iso().optional().allow(null),
+  submittedAt: Joi.date().iso().optional().allow(null),
+  totalDurationMs: Joi.number().integer().min(0).optional().allow(null)
 });

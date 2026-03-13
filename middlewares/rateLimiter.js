@@ -20,6 +20,17 @@ exports.authLimiter = rateLimit({
   },
 });
 
+exports.loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,  // 15 minutes
+  max: 10,                    // 10 attempts per 15 min per IP
+  message: {
+    status: 429,
+    message: "Too many login attempts. Please try again in 15 minutes.",
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
 // ⬅️ ADD: Survey response rate limiter
 exports.surveyResponseLimiter = rateLimit({
   windowMs: 60 * 1000, // 1 minute

@@ -48,7 +48,7 @@ const router = express.Router();
 // const upload = require("../middlewares/multer");
 const { upload } = require('../middlewares/multer');
 const { protect } = require("../middlewares/authMiddleware");
-const { authLimiter } = require("../middlewares/rateLimiter");
+const { authLimiter, loginLimiter } = require("../middlewares/rateLimiter");
 const { allowRoles } = require("../middlewares/roleMiddleware");
 const {
   registerUser,
@@ -70,7 +70,7 @@ router.post("/register", authLimiter, registerUser);
 router.post("/resend-otp", authLimiter, resendOtp);
 router.post("/verify-email", authLimiter, verifyEmail);
 router.get("/verify-email-link", authLimiter, verifyEmailLink);
-router.post("/login", loginUser);
+router.post("/login", loginLimiter, loginUser);
 router.post("/forgot-password", authLimiter, forgotPassword);
 router.post("/reset-password", authLimiter, resetPassword);
 router.post("/verify-reset-code", authLimiter, verifyResetCode);

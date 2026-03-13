@@ -117,6 +117,9 @@ const userSchema = new mongoose.Schema({
   pendingBillingCycle: { type: String, default: null },
   // Temporary: tracks pending checkout session for subscription onboarding idempotency
   pendingCheckoutSessionId: { type: String, default: null },
+  // Brute-force protection: account-level lockout
+  failedLoginAttempts: { type: Number, default: 0 },
+  lockUntil: { type: Date, default: null },
   lastLogin: {
     type: Date,
     default: null,

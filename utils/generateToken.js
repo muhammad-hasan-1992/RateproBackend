@@ -10,7 +10,7 @@ const generateToken = (payload, type = "access") => {
   const expiresIn =
     type === "access"
       ? process.env.JWT_EXPIRE || "15m"
-      : "30d";
+      : "30m";
 
   // console.log("Generating token with:", { payload, type, secret, expiresIn });
   return jwt.sign(payload, secret, { expiresIn });

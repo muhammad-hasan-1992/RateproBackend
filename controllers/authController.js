@@ -44,6 +44,7 @@ const loginSchema = Joi.object({
         "any.required": "Password is required",
     }),
     source: Joi.string().optional(),
+    rememberMe: Joi.boolean().optional(),
 });
 
 const verifyEmailSchema = Joi.object({
@@ -625,11 +626,34 @@ exports.loginUser = async (req, res, next) => {
             return res.status(404).json({ message: "User not found" });
         }
 
+        // ─── Account lockout check ───
+        if (user.lockUntil && user.lockUntil > new Date()) {
+            const minutesLeft = Math.ceil((user.lockUntil - Date.now()) / 60000);
+            Logger.error('loginUser', 'Account locked', {
+                context: { email, minutesLeft },
+                req
+            });
+            return res.status(423).json({
+                message: `Account temporarily locked due to too many failed attempts. Try again in ${minutesLeft} minute(s).`
+            });
+        }
+
         const isMatch = await bcrypt.compare(password, user.password);
         if (!isMatch) {
+            // ─── Increment failed attempts & lock after 5 failures ───
+            user.failedLoginAttempts = (user.failedLoginAttempts || 0) + 1;
+            if (user.failedLoginAttempts >= 5) {
+                user.lockUntil = new Date(Date.now() + 30 * 60 * 1000); // 30 min lock
+                Logger.error('loginUser', 'Account locked after 5 failed attempts', {
+                    context: { email, attempts: user.failedLoginAttempts },
+                    req
+                });
+            }
+            await user.save();
             Logger.error('loginUser', 'Invalid password', {
                 context: {
-                    email
+                    email,
+                    failedAttempts: user.failedLoginAttempts
                 },
                 req
             });
@@ -702,8 +726,14 @@ exports.loginUser = async (req, res, next) => {
             });
         }
 
+        // ─── Reset lockout counters on successful password match ───
+        if (user.failedLoginAttempts > 0 || user.lockUntil) {
+            user.failedLoginAttempts = 0;
+            user.lockUntil = null;
+        }
+
         // ─── CompanyAdmin restriction: block login from public site ───
-        const { source } = req.body;
+        const { source, rememberMe } = req.body;
         if (source === 'public' && user.role === 'companyAdmin') {
             const adminUrl = getBaseURL().admin;
             return res.status(403).json({
@@ -746,6 +776,10 @@ exports.loginUser = async (req, res, next) => {
             path: "/"
         };
 
+        const refreshMaxAge = rememberMe
+            ? 7 * 24 * 60 * 60 * 1000    // 7 days (Remember Me)
+            : 30 * 60 * 1000;             // 30 minutes (default)
+
         res.cookie("accessToken", accessToken, {
             ...cookieConfig,
             maxAge: 15 * 60 * 1000,
@@ -753,7 +787,7 @@ exports.loginUser = async (req, res, next) => {
 
         res.cookie("refreshToken", refreshToken, {
             ...cookieConfig,
-            maxAge: 30 * 24 * 60 * 60 * 1000,
+            maxAge: refreshMaxAge,
         });
 
         // Update last login

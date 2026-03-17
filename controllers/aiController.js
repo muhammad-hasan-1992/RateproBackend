@@ -482,6 +482,41 @@ exports.aiTranslateSurvey = async (req, res, next) => {
   }
 };
 
+// ── Post-processing: enforce question type diversity ──────────
+function enforceDiversity(questions) {
+  if (!Array.isArray(questions) || questions.length < 2) return questions;
+
+  const typePool = ['rating', 'likert', 'single_choice', 'text_short', 'nps', 'multiple_choice', 'yes_no'];
+  let typeIdx = 0;
+
+  // Fix adjacent duplicates
+  for (let i = 1; i < questions.length; i++) {
+    if (questions[i].type === questions[i - 1].type) {
+      // Pick a type that's different from both neighbors
+      let newType;
+      do {
+        newType = typePool[typeIdx++ % typePool.length];
+      } while (newType === questions[i - 1].type || (i + 1 < questions.length && newType === questions[i + 1]?.type));
+      questions[i].type = newType;
+    }
+  }
+
+  // Verify at least 4 unique types (when question count allows)
+  const types = new Set(questions.map(q => q.type));
+  if (types.size < Math.min(4, questions.length)) {
+    // Force variety on every other question
+    for (let i = 0; i < questions.length && types.size < 4; i++) {
+      const candidate = typePool[i % typePool.length];
+      if (!types.has(candidate)) {
+        questions[i].type = candidate;
+        types.add(candidate);
+      }
+    }
+  }
+
+  return questions;
+}
+
 // @desc    Generate survey from company profile
 // @route   POST /api/ai/generate-from-profile
 // @access  Private
@@ -635,6 +670,14 @@ Generate a JSON response with this structure:
 
 Question types available: rating, single_choice, multiple_choice, text_short, text_long, nps, likert, yes_no, date, number
 
+CRITICAL DIVERSITY RULES:
+- No two adjacent questions may share the same question type
+- Use at least 4 DIFFERENT question types across the survey
+- Vary question phrasing: use direct questions, statements, and scenarios
+- Alternate between Likert agreement scales, satisfaction scales, and frequency scales
+- Include at least one open-text question for qualitative feedback
+- Each question must target a DIFFERENT aspect of the service/product
+
 Make questions industry-specific and relevant to the survey goal.
 Use ${tone} tone and make questions easy to understand for ${targetAudience}.
 ${surveyLanguage === 'ar' ? 'Remember: ALL content must be in Arabic.' : ''}`;
@@ -663,6 +706,11 @@ ${surveyLanguage === 'ar' ? 'Remember: ALL content must be in Arabic.' : ''}`;
         // ✅ FIX: Ensure language is set in response
         if (parsedResponse.data?.survey) {
           parsedResponse.data.survey.language = surveyLanguage;
+        }
+
+        // ✅ Post-processing: enforce question diversity
+        if (parsedResponse.data?.questions) {
+          parsedResponse.data.questions = enforceDiversity(parsedResponse.data.questions);
         }
         
         console.log('✅ Parsed AI Response:', {

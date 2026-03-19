@@ -72,6 +72,21 @@ app.use(globalLimiter);
 // Static folder for uploads (avatars, PDFs, etc.)
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
+// 🔍 TEMPORARY: Cookie diagnostic endpoint (remove after debugging)
+app.get("/api/debug/cookies", (req, res) => {
+  console.log("🔍 [DEBUG] Cookies received:", req.cookies);
+  console.log("🔍 [DEBUG] User-Agent:", req.headers["user-agent"]);
+  console.log("🔍 [DEBUG] Origin:", req.headers.origin);
+  res.json({
+    cookies: Object.keys(req.cookies || {}),
+    hasRefreshToken: !!req.cookies?.refreshToken,
+    hasAccessToken: !!req.cookies?.accessToken,
+    userAgent: req.headers["user-agent"],
+    origin: req.headers.origin,
+    timestamp: new Date().toISOString(),
+  });
+});
+
 // Routes
 app.use("/api/auth", require("./routes/authRoutes"));
 app.use("/api/users", require("./routes/userRoutes"));
